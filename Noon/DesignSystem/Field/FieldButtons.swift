@@ -253,16 +253,44 @@ struct FieldRoundButton: View {
 /// M-Divider with an inline label, e.g. "OR".
 struct FieldLabeledDivider: View {
     let label: String
+    /// Saved accounts use dashed rules, like the divider in the account menu.
+    var dashed = false
 
     var body: some View {
         HStack(spacing: FieldSpace.s20) {
-            Rectangle().fill(FieldColour.Border.primary).frame(height: 1)
+            rule
             Text(label)
                 .fieldText(.a14SemiBold)
                 .foregroundStyle(FieldColour.TextNIcon.muted)
-            Rectangle().fill(FieldColour.Border.primary).frame(height: 1)
+            rule
         }
         .padding(.horizontal, FieldSpace.s8)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var rule: some View {
+        if dashed {
+            FieldDashedLine().frame(height: 1)
+        } else {
+            Rectangle().fill(FieldColour.Border.primary).frame(height: 1)
+        }
+    }
+}
+
+/// A 1pt dashed rule in the border colour (4 on, 3 off).
+struct FieldDashedLine: View {
+    var color: Color = FieldColour.Border.primary
+
+    var body: some View {
+        Line()
+            .stroke(color, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            .accessibilityHidden(true)
+    }
+
+    private struct Line: Shape {
+        nonisolated func path(in rect: CGRect) -> Path {
+            Path { $0.move(to: CGPoint(x: rect.minX, y: rect.midY)); $0.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)) }
+        }
     }
 }

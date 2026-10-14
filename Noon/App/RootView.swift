@@ -25,7 +25,9 @@ struct MainTabs: View {
 
     /// Out of the way while typing, and during the sign-in moment until the page arrives with it.
     private var showsNav: Bool {
-        guard !keyboardVisible else { return false }
+        guard !keyboardVisible, app.flow.passkeyOffer == nil || app.phase == .signedIn else { return false }
+        // The Face ID sheet covers the whole screen, like the system one.
+        if app.flow.showsFaceIDPrompt || app.authSheetUp, app.phase == .signedOut { return false }
         return app.celebration == nil || app.celebrationStage == .land
     }
 
@@ -54,12 +56,33 @@ struct MainTabs: View {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 if showsNav {
-                    BottomNav(selection: $app.selectedTab)
+                    BottomNav(selection: $app.selectedTab, cartBadge: CartTab.badgeCount)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .ignoresSafeArea(.keyboard)
             .animation(FieldMotion.Easing.standard(FieldMotion.Duration.lg), value: showsNav)
+        }
+        .overlay {
+            // Sign-in from checkout or a link covers the tab, nav included.
+            if let entry = app.authEntry {
+                AuthModal(entry: entry)
+                    .transition(app.phase == .signedIn ? .opacity : .move(edge: .bottom))
+                    .zIndex(1)
+            }
+        }
+        .overlay(alignment: .top) {
+            if let toast = app.toast {
+                Text(toast)
+                    .fieldText(.b14SemiBold)
+                    .foregroundStyle(FieldColour.TextNIcon.onSurfaceBold)
+                    .padding(.horizontal, FieldSpace.s16)
+                    .padding(.vertical, FieldSpace.s12)
+                    .background(Capsule().fill(FieldColour.Surface.primaryInverted))
+                    .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+                    .padding(.top, FieldSpace.s8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardVisible = true
@@ -78,32 +101,19 @@ struct MainTabs: View {
                 FaceIDSheet()
             }
         }
-    }
-}
-
-/// Empty for now, and home to the prototype tools: the header transition preview on top and the
-/// one way into the prototype controls.
-struct CartTab: View {
-    @Environment(AppModel.self) private var app
-    @Environment(\.lang) private var lang
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TransitionPreview()
-                .environment(\.layoutDirection, .leftToRight)
-                .padding(.horizontal, FieldSpace.s12)
-                .padding(.top, FieldSpace.s8)
-
-            PlaceholderTab(icon: .navCart, title: lang.t("Your cart is empty", "سلّتك فارغة"),
-                           message: lang.t("Items you add will wait for you here.", "ستنتظرك هنا المنتجات التي تضيفها.")) {
-                FieldRoundButton(title: "Prototype controls", leadingImage: FieldIconName.preferences.assetName, fill: FieldColour.Surface.primary) {
-                    app.showsDemo = true
-                }
-                .environment(\.layoutDirection, .leftToRight)
-                .padding(.top, FieldSpace.s20)
+        .overlay {
+            // Entry point 3: the WhatsApp chat with the shared address link, over everything.
+            if app.showsAddressChat {
+                AddressLinkChat()
+                    .transition(.move(edge: .trailing))
             }
         }
-        .background(FieldColour.Surface.tertiary.ignoresSafeArea())
+        #if DEBUG
+        .task {
+            // QA: launch straight into the chat with `-qaAddressChat`.
+            if ProcessInfo.processInfo.arguments.contains("-qaAddressChat") { app.openAddressChat() }
+        }
+        #endif
     }
 }
 

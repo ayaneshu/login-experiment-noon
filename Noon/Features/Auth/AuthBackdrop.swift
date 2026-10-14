@@ -15,8 +15,14 @@ struct AuthBackdrop: View {
     let restSheetTop: CGFloat
     let safeTop: CGFloat
     let showsIllustration: Bool
-    /// While typing or partway through verification, a back button sits beside the flag.
+    /// What stands above the sheet: noon's shopping scene, or the noon One card offer.
+    let headerArt: AuthHeaderArt
+    /// My Account shows the market and language; other entry points show noon and a close button.
+    let entry: AuthEntry
+    /// While typing or partway through verification, the header holds only a back button.
     let showsBack: Bool
+    /// Resting sheets in the new layouts carry a grabber on their top edge.
+    let showsGrabber: Bool
     /// Signed in: the sheet fills the screen in the account page's colour.
     let expanded: Bool
     /// Pushes the sheet below the screen during the entrance.
@@ -24,6 +30,12 @@ struct AuthBackdrop: View {
     var onBack: () -> Void
     var onSwitchLanguage: () -> Void
     var onTapHeader: () -> Void
+    var onClose: () -> Void = {}
+    var onApplyNoonOne: () -> Void = {}
+    /// Separate flow, Log in / Sign up: the chip on the right ("New account" or "Log in").
+    var formChip: HeaderFormChip? = nil
+    /// Separate flow, opened from checkout or a link: ✕ on the left closes sign-in.
+    var leadingClose = false
 
     @Environment(\.lang) private var lang
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,11 +71,31 @@ struct AuthBackdrop: View {
                     .frame(maxHeight: .infinity, alignment: .top)
                     .onTapGesture(perform: onTapHeader)
 
-                HeroIllustration(visible: showsIllustration)
-                    // Artwork scales with the design, standing on the sheet's edge.
-                    .scaleEffect(FieldScale.factor, anchor: .bottom)
-                    .position(x: geo.size.width / 2, y: restSheetTop - HeroIllustration.size.height / 2)
-                    .allowsHitTesting(false)
+                switch headerArt {
+                case .hero:
+                    HeroIllustration(visible: showsIllustration)
+                        // Artwork scales with the design, standing on the sheet's edge.
+                        .scaleEffect(FieldScale.factor, anchor: .bottom)
+                        .position(x: geo.size.width / 2, y: restSheetTop - HeroIllustration.size.height / 2)
+                        .allowsHitTesting(false)
+                case .noonOne:
+                    // Figma measures it from the top of the screen, status bar included.
+                    NoonOneHeader(visible: showsIllustration, onApply: onApplyNoonOne)
+                        .scaleEffect(FieldScale.factor, anchor: .topLeading)
+                        .frame(width: NoonOneHeader.size.width * FieldScale.factor, height: NoonOneHeader.size.height * FieldScale.factor, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .offset(y: safeTop - 62.scaled)
+                        .allowsHitTesting(showsIllustration)
+                case .carousel:
+                    // Centred in the blue between the top row and the resting sheet, so it sits right
+                    // whether the sheet rests high (Choose your account) or low (Welcome).
+                    WelcomeCarousel(visible: showsIllustration)
+                        .scaleEffect(FieldScale.factor, anchor: .topLeading)
+                        .frame(width: WelcomeCarousel.size.width * FieldScale.factor, height: WelcomeCarousel.size.height * FieldScale.factor, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .offset(y: carouselTop(safeTop: safeTop))
+                        .allowsHitTesting(showsIllustration)
+                }
 
                 if let wave {
                     WavingHand()
@@ -99,27 +131,69 @@ struct AuthBackdrop: View {
 
     // MARK: - Header controls
 
+    /// The carousel frame's top that centres its content between the top row (38pt under the
+    /// status bar) and the resting sheet.
+    private func carouselTop(safeTop: CGFloat) -> CGFloat {
+        let rowBottom = safeTop + 38.scaled
+        let content = WelcomeCarousel.contentHeight.scaled
+        return rowBottom + (restSheetTop - rowBottom - content) / 2 - WelcomeCarousel.contentTop.scaled
+    }
+
     private var topRow: some View {
         HStack(spacing: FieldSpace.s8) {
-            HStack(spacing: FieldSpace.s4) {
-                if showsBack {
-                    HeaderCircleButton(icon: .arrowLeft, foreground: controlForeground, label: lang.t("Back", "رجوع"), action: onBack)
-                        .padding(.horizontal, -3)
-                        .transition(.asymmetric(
-                            insertion: .modifier(active: Materialize(opacity: 0, blur: 4, scale: 0.6, x: -12), identity: Materialize()),
-                            removal: .modifier(active: Materialize(opacity: 0, blur: 2, scale: 0.8), identity: Materialize())
-                        ))
-                }
+            if leadingClose {
+                HeaderCloseButton(label: lang.t("Close", "إغلاق"), action: onClose)
+                    .padding(.leading, -3)
+                    .transition(headerTransition)
+            } else if showsBack {
+                // Overlay circle with a white arrow, on blue and on the yellow welcome alike.
+                HeaderCircleButton(icon: .arrowLeft, foreground: FieldColour.TextNIcon.onSurfaceBold, label: lang.t("Back", "رجوع"), action: onBack)
+                    .padding(.leading, -3)
+                    .transition(headerTransition)
+            } else if entry.isMyAccount {
                 MarketPill(market: app.market, foreground: controlForeground) { app.selectMarket($0) }
+                    .padding(.leading, FieldSpace.s4)
+                    .transition(headerTransition)
+            } else {
+                Image(FieldArt.noonWordmark)
+                    .renderingMode(.template)
+                    .resizable()
+                    .frame(width: 69.scaled, height: 18.scaled)
+                    .foregroundStyle(FieldColour.TextNIcon.onSurfaceBold)
+                    .padding(.leading, 6.scaled)
+                    .transition(headerTransition)
+                    .accessibilityLabel("noon")
             }
-            .animation(.spring(duration: 0.4, bounce: 0), value: showsBack)
 
             Spacer(minLength: 0)
 
-            LanguageToggle(current: app.lang, onLight: isLight, action: onSwitchLanguage)
+            if let formChip {
+                FormChipButton(chip: formChip)
+                    .id(formChip.title)
+                    .transition(headerTransition)
+            } else if !showsBack && !leadingClose {
+                Group {
+                    if entry.isMyAccount {
+                        LanguageToggle(current: app.lang, onLight: isLight, action: onSwitchLanguage)
+                    } else {
+                        HeaderCloseButton(label: lang.t("Close", "إغلاق"), action: onClose)
+                    }
+                }
+                .padding(.trailing, FieldSpace.s4)
+                .transition(headerTransition)
+            }
         }
         .frame(height: 38.scaled)
+        .animation(.spring(duration: 0.4, bounce: 0), value: showsBack)
+        .animation(.spring(duration: 0.4, bounce: 0), value: formChip?.title)
         .animation(FieldMotion.Easing.standard(FieldMotion.Duration.base), value: isLight)
+    }
+
+    private var headerTransition: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: Materialize(opacity: 0, blur: 4, scale: 0.8), identity: Materialize()),
+            removal: .modifier(active: Materialize(opacity: 0, blur: 2, scale: 0.9), identity: Materialize())
+        )
     }
 
     // MARK: - Sheet
@@ -128,10 +202,56 @@ struct AuthBackdrop: View {
         let radius = expanded ? 0 : AuthLayout.sheetRadius
         return UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius, style: .continuous)
             .fill(expanded ? FieldColour.Surface.tertiary : FieldColour.Surface.primary)
+            .overlay(alignment: .top) {
+                Capsule()
+                    .fill(FieldPalette.AlphaDark.c16)
+                    .frame(width: 36.scaled, height: 4.scaled)
+                    .padding(.top, 12.scaled)
+                    .opacity(showsGrabber && !expanded ? 1 : 0)
+                    .animation(.easeOut(duration: 0.2), value: showsGrabber)
+            }
             .frame(height: height + 40)
             .offset(y: sheetTop + introShift)
             .frame(maxHeight: .infinity, alignment: .top)
             .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Header chip
+
+/// The chip on the right of the Log in / Sign up header: "+ New account" or "Log in".
+struct HeaderFormChip: Equatable {
+    let title: String
+    var showsPlus: Bool
+    var action: () -> Void
+
+    static func == (lhs: HeaderFormChip, rhs: HeaderFormChip) -> Bool {
+        lhs.title == rhs.title && lhs.showsPlus == rhs.showsPlus
+    }
+}
+
+/// M-NeutralRoundButton on the header (Figma 1106:7079): a translucent pill, white label.
+private struct FormChipButton: View {
+    let chip: HeaderFormChip
+
+    var body: some View {
+        Button(action: chip.action) {
+            HStack(spacing: FieldSpace.s6) {
+                if chip.showsPlus {
+                    FieldIcon(.plus, size: 20)
+                }
+                Text(chip.title)
+                    .fieldText(.b13SemiBold)
+                    .fixedSize()
+            }
+            .foregroundStyle(FieldColour.TextNIcon.onSurfaceBold)
+            .padding(.leading, chip.showsPlus ? FieldSpace.s12 : FieldSpace.s16)
+            .padding(.trailing, FieldSpace.s16)
+            .frame(height: 40.scaled)
+            .background(Capsule().fill(FieldPalette.AlphaDark.c16))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(FieldPressStyle(scale: 0.96))
     }
 }
 

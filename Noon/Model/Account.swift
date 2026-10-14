@@ -30,6 +30,9 @@ enum LoginVariant: String, CaseIterable, Codable {
     case smart
     /// A toggle between "Email" and "Phone number"; the field takes only what's selected.
     case toggle
+    /// Separate Log in and Sign up screens, reached from a Welcome screen with two buttons
+    /// (Figma "New flow · 2 entry points"). Log in takes email or phone; Sign up takes email only.
+    case separate
 }
 
 /// Everything the app keeps on-device between launches.
@@ -42,6 +45,8 @@ final class DeviceStore {
         static let lang = "device.language"
         static let loginVariant = "demo.loginVariant"
         static let headerTransition = "demo.headerTransition"
+        static let flowVersion = "demo.flowVersion"
+        static let passkeyOfferDismissed = "demo.passkeyOfferDismissed"
     }
 
     private let defaults = UserDefaults.standard
@@ -76,8 +81,28 @@ final class DeviceStore {
         registered = Self.load([String: Account].self, from: defaults, key: Key.registered) ?? [:]
         simulateAutofill = defaults.object(forKey: Key.autofill) as? Bool ?? true
         lang = Lang(rawValue: defaults.string(forKey: Key.lang) ?? "") ?? .en
-        loginVariant = LoginVariant(rawValue: defaults.string(forKey: Key.loginVariant) ?? "") ?? .smart
+        loginVariant = LoginVariant(rawValue: defaults.string(forKey: Key.loginVariant) ?? "") ?? .separate
+        // The separate Log in / Sign up flow is the newest approach: start everyone on it once.
+        if defaults.integer(forKey: Key.flowVersion) < 3 {
+            loginVariant = .separate
+            defaults.set(LoginVariant.separate.rawValue, forKey: Key.loginVariant)
+            defaults.set(3, forKey: Key.flowVersion)
+        }
         headerTransition = Self.load(HeaderTransitionSettings.self, from: defaults, key: Key.headerTransition) ?? HeaderTransitionSettings()
+    }
+
+    /// When the post-sign-in passkey offer was last dismissed. The offer waits out a cooldown.
+    var passkeyOfferDismissedAt: Date? {
+        get { defaults.object(forKey: Key.passkeyOfferDismissed) as? Date }
+        set { defaults.set(newValue, forKey: Key.passkeyOfferDismissed) }
+    }
+
+    /// Prototype cooldown so the offer can be seen again within a demo session.
+    static let passkeyOfferCooldown: TimeInterval = 5 * 60
+
+    var passkeyOfferCoolingDown: Bool {
+        guard let dismissed = passkeyOfferDismissedAt else { return false }
+        return Date().timeIntervalSince(dismissed) < Self.passkeyOfferCooldown
     }
 
     func remember(_ account: Account) {
@@ -89,6 +114,7 @@ final class DeviceStore {
         remembered = nil
         registered = [:]
         simulateAutofill = true
+        passkeyOfferDismissedAt = nil
     }
 
     private func save<T: Encodable>(_ value: T?, for key: String) {

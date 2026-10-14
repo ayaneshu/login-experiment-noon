@@ -1,20 +1,32 @@
 import SwiftUI
 
-/// "Enter the 6-digit code", with "Enter your password" one quiet tap away on the same screen.
-/// Switching morphs in place instead of moving to another screen: the title rewrites itself, the
-/// identity line stays where it is, the six code boxes slide together into one password field at
-/// the same height, and the bottom action swaps in its own spot. The keyboard stays up and just
-/// changes from number pad to letters.
+/// "Enter the 6-digit code", with a password one quiet tap away on the same screen: "Enter your
+/// password" for an existing account, "Create your account" for someone signing up. Switching
+/// morphs in place instead of moving to another screen: the title rewrites itself, the identity
+/// line stays where it is, the six code boxes slide together into one password field at the same
+/// height, and the bottom action swaps in its own spot. The keyboard stays up and just changes
+/// from number pad to letters.
 struct VerifyStep: View {
     @Bindable var flow: AuthFlow
     var focus: FocusState<AuthField?>.Binding
     /// From the top padding to the bottom action's edge (see `AuthLayout`).
     let stageHeight: CGFloat
+    var onOpen: (URL) -> Void = { _ in }
     @Environment(\.lang) private var lang
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var passwordShakes = 0
 
-    private var usesPassword: Bool { flow.step == .password }
+    private enum Mode { case code, password, create }
+
+    private var mode: Mode {
+        switch flow.step {
+        case .password: .password
+        case .createPassword: .create
+        default: .code
+        }
+    }
+
+    private var usesPassword: Bool { mode != .code }
 
     /// One spring for the whole morph, so every part moves as one.
     private var morph: Animation {
@@ -22,115 +34,248 @@ struct VerifyStep: View {
     }
 
     var body: some View {
-        // Title · 4 · identity line · 24 · 20 · input · 20 · notice, with the bottom action held at
-        // the typing screens' fixed spot. The title-to-input gap matches the email/phone screen,
-        // so the input sits at the same height on every step.
+        // Title · 4 · identity line · 24 · 20 · input · notice, with the bottom action held at the
+        // typing screens' fixed spot. The title-to-input gap matches the email/phone screen, so the
+        // input sits at the same height on every step.
         VStack(alignment: .leading, spacing: 0) {
-            AuthTitle(title: usesPassword ? lang.t("Enter your password", "أدخل كلمة المرور")
-                                          : lang.t("Enter the 6-digit code", "أدخل الرمز المكوّن من 6 أرقام"),
-                      bottomPadding: 0)
+            AuthTitle(title: title, bottomPadding: 0)
 
-            if let target = flow.target {
-                SentToRow(
-                    prefix: prefix,
-                    identifier: target,
-                    channelIcon: usesPassword ? nil : (flow.channel == .email ? FieldArt.email : FieldIconName.message.assetName),
-                    changeTitle: lang.t("Change", "تغيير"),
-                    onChange: flow.changeIdentity
-                )
+            identityLine
                 .padding(.top, FieldSpace.s4)
-            }
 
             // The shared element: the code boxes and the password field occupy the same slot.
             ZStack {
                 OTPBoxes(flow: flow, focus: focus, merged: usesPassword)
                     .reportCenter { flow.codeAnchor = $0 }
-                PasswordInput(flow: flow, focus: focus, shown: usesPassword, onSubmit: submitPassword)
-                    .shake(passwordShakes)
-                    .reportCenter { flow.fieldAnchor = $0 }
+                PasswordInput(
+                    text: mode == .create ? $flow.newPassword : $flow.password,
+                    placeholder: mode == .create ? lang.t("Create a password", "أنشئ كلمة مرور") : lang.t("Password", "كلمة المرور"),
+                    isNew: mode == .create,
+                    error: mode == .password && flow.passwordState == .failed,
+                    focus: focus,
+                    shown: usesPassword,
+                    onSubmit: submitPassword
+                )
+                .shake(passwordShakes)
+                .reportCenter { flow.fieldAnchor = $0 }
             }
             .frame(height: usesPassword ? 56.scaled : 66.scaled)
             .padding(.top, FieldSpace.s24 + FieldSpace.s20)
 
             ZStack(alignment: .topLeading) {
-                if usesPassword {
-                    passwordNotice
+                switch mode {
+                case .code:
+                    CodeNotice(flow: flow)
+                        .padding(.top, FieldSpace.s20)
                         .transition(.softRise)
-                } else {
-                    VStack(alignment: .leading, spacing: FieldSpace.s12) {
-                        CodeNotice(flow: flow)
-                        if flow.channel == .whatsapp {
-                            WhatsAppAssist(flow: flow)
-                                .transition(.softRise)
-                        }
-                    }
-                    .transition(.softRise)
+                case .password:
+                    passwordNotice
+                        .padding(.top, FieldSpace.s4)
+                        .transition(.softRise)
+                case .create:
+                    PasswordRulesHint(rules: flow.passwordRules, typed: !flow.newPassword.isEmpty)
+                        .padding(.top, FieldSpace.s8)
+                        .transition(.softRise)
                 }
             }
-            .padding(.top, usesPassword ? FieldSpace.s8 : FieldSpace.s20)
 
             Spacer(minLength: FieldSpace.s20)
 
             // The bottom action changes in its own spot: the quiet password link becomes the button.
             ZStack(alignment: .bottomLeading) {
-                if usesPassword {
+                switch mode {
+                case .password:
+                    VStack(alignment: .leading, spacing: FieldSpace.s20) {
+                        FieldNeutralTextButton(title: flow.isSeparate ? lang.t("Use OTP instead", "استخدم رمز التحقق بدلاً من ذلك") : lang.t("Login with OTP", "سجّل الدخول برمز التحقق"), leadingImage: FieldArt.passwordInput) {
+                            flow.switchToCode()
+                        }
+                        .padding(.horizontal, FieldSpace.s2)
+                        FieldButton(
+                            title: lang.t("Log in", "تسجيل الدخول"),
+                            tone: .neutral,
+                            isLoading: flow.passwordState == .verifying || flow.passwordState == .verified,
+                            action: submitPassword
+                        )
+                        .reportCenter { flow.ctaAnchor = $0 }
+                    }
+                    .transition(.softRise)
+                case .create:
                     FieldButton(
-                        title: lang.t("Log in", "تسجيل الدخول"),
+                        title: lang.t("Create account", "أنشئ الحساب"),
                         tone: .neutral,
                         isLoading: flow.passwordState == .verifying || flow.passwordState == .verified,
                         action: submitPassword
                     )
                     .reportCenter { flow.ctaAnchor = $0 }
                     .transition(.softRise)
-                } else if flow.canUsePassword {
-                    FieldNeutralTextButton(title: lang.t("Sign in with password", "سجّل الدخول بكلمة المرور"), leadingImage: FieldArt.passwordInput) {
-                        flow.switchToPassword()
+                case .code:
+                    if flow.canUsePassword {
+                        FieldNeutralTextButton(title: flow.isSeparate ? lang.t("Use password instead", "استخدم كلمة المرور بدلاً من ذلك") : lang.t("Sign in with Password", "سجّل الدخول بكلمة المرور"), leadingImage: FieldArt.passwordInput) {
+                            flow.switchToPassword()
+                        }
+                        .padding(.horizontal, FieldSpace.s2)
+                        .transition(.softRise)
+                    } else if flow.canCreatePassword {
+                        FieldNeutralTextButton(title: flow.isSeparate ? lang.t("Use password instead", "استخدم كلمة المرور بدلاً من ذلك") : lang.t("Sign up with password", "أنشئ حساباً بكلمة مرور"), leadingImage: FieldArt.passwordInput) {
+                            flow.switchToCreatePassword()
+                        }
+                        .padding(.horizontal, FieldSpace.s2)
+                        .transition(.softRise)
                     }
-                    .padding(.horizontal, FieldSpace.s2)
-                    .transition(.softRise)
                 }
             }
         }
         .frame(minHeight: stageHeight, alignment: .top)
-        .animation(morph, value: usesPassword)
+        .animation(morph, value: flow.step)
         .animation(Motion.smooth, value: flow.channel)
         .animation(Motion.smooth, value: flow.passwordState)
         .onChange(of: flow.passwordState) { _, state in
             if state == .failed { passwordShakes += 1 }
         }
+        .onChange(of: flow.weakPasswordAttempts) { _, _ in passwordShakes += 1 }
     }
 
-    private var prefix: String {
-        if usesPassword { return lang.t("Logging in as", "تسجيل الدخول باسم") }
-        return flow.channel == .whatsapp ? lang.t("Sent on WhatsApp to", "أُرسل عبر واتساب إلى") : lang.t("Sent on", "أُرسل إلى")
+    private var title: String {
+        switch mode {
+        case .code: lang.t("Enter the 6-digit code", "أدخل الرمز المكوّن من 6 أرقام")
+        case .password: lang.t("Enter your password", "أدخل كلمة المرور")
+        case .create: lang.t("Create your account", "أنشئ حسابك")
+        }
     }
 
-    /// Under the password field: what went wrong, if anything, and the way back to a code.
+    /// "Sent on … ✉︎ • Change", "Sent on +971 … via (WhatsApp) • Change", "Logging in as … • Change",
+    /// or, when creating an account, what the password is for.
+    @ViewBuilder
+    private var identityLine: some View {
+        if mode == .create {
+            Text(lang.t("Set a password for your account", "عيّن كلمة مرور لحسابك"))
+                .fieldText(.b14Regular)
+                .foregroundStyle(FieldColour.TextNIcon.tertiary)
+                .padding(.horizontal, FieldSpace.s4)
+                .frame(maxWidth: .infinity, minHeight: 20.scaled, alignment: .leading)
+                .transition(.softRise)
+        } else if let target = flow.target {
+            SentToRow(
+                prefix: mode == .password ? lang.t("Logging in as", "تسجيل الدخول باسم") : lang.t("Sent on", "أُرسل إلى"),
+                identifier: target,
+                suffix: mode == .code && flow.channel != .email ? lang.t("via", "عبر") : nil,
+                channelIcon: mode == .password ? nil : channelIcon,
+                changeTitle: lang.t("Change", "تغيير"),
+                onChange: flow.changeIdentity
+            )
+        }
+    }
+
+    private var channelIcon: SentToRow.Icon {
+        switch flow.channel {
+        case .email: .template(FieldArt.email)
+        case .sms: .template(FieldIconName.message.assetName)
+        case .whatsapp: .original(FieldArt.whatsapp)
+        }
+    }
+
+    /// Under the password field: what went wrong, if anything, and the way to reset it.
     private var passwordNotice: some View {
-        VStack(alignment: .leading, spacing: FieldSpace.s4) {
+        VStack(alignment: .leading, spacing: 0) {
             if flow.passwordState == .failed {
                 FieldHelperText(
-                    text: lang.t("That password didn't work. Try again or log in with OTP.",
-                                 "كلمة المرور غير صحيحة. حاول مرة أخرى أو سجّل الدخول برمز التحقق."),
-                    tone: .warning
+                    text: lang.t("Password failed. Retry or use OTP.", "تعذّر تسجيل الدخول. أعد المحاولة أو استخدم رمز التحقق."),
+                    tone: .error
                 )
                 .transition(.softRise)
             }
-            FieldNeutralTextButton(title: lang.t("Login with OTP", "سجّل الدخول برمز التحقق"), leadingImage: FieldArt.passwordAlt) {
-                flow.switchToCode()
+            Button { onOpen(Links.forgotPassword) } label: {
+                Text(lang.t("Forgot password?", "نسيت كلمة المرور؟"))
+                    .fieldText(.b14Medium)
+                    .foregroundStyle(FieldColour.TextNIcon.action)
+                    .padding(.leading, FieldSpace.s8)
+                    .padding(.top, FieldSpace.s8)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, FieldSpace.s2)
+            .buttonStyle(FieldPressStyle(scale: 0.97))
         }
     }
 
     private func submitPassword() {
-        guard !flow.password.isEmpty else {
-            // Nothing typed yet: nudge the field rather than doing nothing.
-            passwordShakes += 1
-            focus.wrappedValue = .password
-            return
+        switch mode {
+        case .create:
+            flow.createAccount()
+        default:
+            guard !flow.password.isEmpty else {
+                // Nothing typed yet: nudge the field rather than doing nothing.
+                passwordShakes += 1
+                focus.wrappedValue = .password
+                return
+            }
+            flow.submitPassword()
         }
-        flow.submitPassword()
+    }
+}
+
+/// What a new password still needs, in one sentence that shrinks as rules are met: unmet terms in
+/// SemiBold, then "You've got a strong password!" in green once they're all there.
+private struct PasswordRulesHint: View {
+    let rules: AuthFlow.PasswordRules
+    /// Before anything is typed the full sentence shows, even though nothing is met yet.
+    let typed: Bool
+    @Environment(\.lang) private var lang
+
+    var body: some View {
+        Group {
+            if typed, rules.isStrong {
+                Text(lang.t("You've got a strong password!", "كلمة مرور قوية!"))
+                    .fieldText(.b13Medium)
+                    .foregroundStyle(FieldColour.TextNIcon.success)
+                    .id("strong")
+            } else {
+                Text(sentence)
+                    .fieldText(.b13Regular)
+                    .foregroundStyle(FieldColour.TextNIcon.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .id("rules")
+            }
+        }
+        .transition(.softRise)
+        .padding(.horizontal, FieldSpace.s8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(Motion.smooth, value: rules)
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    private func bold(_ text: String) -> AttributedString {
+        var a = AttributedString(text)
+        a.font = FieldTextStyle.b13SemiBold.font
+        a.foregroundColor = FieldColour.TextNIcon.primary
+        return a
+    }
+
+    /// Figma: "Use 8+ characters with a number, a symbol, an uppercase and a lowercase letter", then
+    /// only what's missing ("Use a symbol, an uppercase and a lowercase letter").
+    private var sentence: AttributedString {
+        guard lang == .en else {
+            return AttributedString("استخدم ٨ أحرف على الأقل مع رقم ورمز وحرف كبير وحرف صغير")
+        }
+        var items: [(article: String, term: String)] = []
+        if !rules.number || !typed { items.append(("a ", "number")) }
+        if !rules.symbol || !typed { items.append(("a ", "symbol")) }
+        if !rules.uppercase || !typed { items.append(("an ", "uppercase")) }
+        if !rules.lowercase || !typed { items.append(("a ", "lowercase")) }
+        let needsLength = !rules.length || !typed
+
+        var result = AttributedString("Use ")
+        if needsLength {
+            result += bold("8+ characters")
+            if !items.isEmpty { result += AttributedString(" with ") }
+        }
+        for (index, item) in items.enumerated() {
+            if index > 0 { result += AttributedString(index == items.count - 1 ? " and " : ", ") }
+            result += AttributedString(item.article)
+            result += bold(item.term)
+        }
+        if let last = items.last, last.term == "uppercase" || last.term == "lowercase" {
+            result += AttributedString(" letter")
+        }
+        return result
     }
 }
 
@@ -139,7 +284,11 @@ struct VerifyStep: View {
 /// The password input in M-InputText chrome. Always mounted while verifying, so switching from
 /// the code keeps the keyboard up and only changes its layout.
 private struct PasswordInput: View {
-    @Bindable var flow: AuthFlow
+    @Binding var text: String
+    var placeholder: String
+    /// Creating an account: offer a strong password from Keychain instead of filling a saved one.
+    var isNew = false
+    var error = false
     var focus: FocusState<AuthField?>.Binding
     let shown: Bool
     var onSubmit: () -> Void
@@ -154,8 +303,8 @@ private struct PasswordInput: View {
     var body: some View {
         HStack(spacing: FieldSpace.s8) {
             ZStack(alignment: .leading) {
-                if flow.password.isEmpty {
-                    Text(lang.t("Password", "كلمة المرور"))
+                if text.isEmpty {
+                    Text(placeholder)
                         .font(FieldTextStyle.b16SemiBold.font)
                         .tracking(FieldTextStyle.b16SemiBold.tracking)
                         .foregroundStyle(FieldColour.TextNIcon.muted)
@@ -164,22 +313,22 @@ private struct PasswordInput: View {
                 }
                 // Both fields stay mounted so toggling visibility never drops the keyboard.
                 ZStack {
-                    SecureField("", text: $flow.password)
+                    SecureField("", text: $text)
                         .focused(focus, equals: .password)
                         .opacity(reveals ? 0 : 1)
-                    TextField("", text: $flow.password)
+                    TextField("", text: $text)
                         .focused(focus, equals: .passwordVisible)
                         .opacity(reveals ? 1 : 0)
                 }
                 .font(FieldTextStyle.h18Bold.font)
                 .foregroundStyle(FieldColour.TextNIcon.primary)
                 .tint(FieldColour.Surface.actionBold)
-                .textContentType(.password)
+                .textContentType(isNew ? .newPassword : .password)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.go)
                 .onSubmit(onSubmit)
-                .accessibilityLabel(lang.t("Password", "كلمة المرور"))
+                .accessibilityLabel(placeholder)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -188,12 +337,14 @@ private struct PasswordInput: View {
                 focus.wrappedValue = reveals ? .passwordVisible : .password
             } label: {
                 ZStack {
-                    Image(systemName: reveals ? "eye.slash" : "eye")
+                    Image(reveals ? FieldArt.eyeOff : FieldArt.eye)
+                        .renderingMode(.template)
+                        .resizable()
+                        .frame(width: 24.scaled, height: 24.scaled)
                         .id(reveals)
                         .transition(.iconSwap)
                 }
-                .font(.system(size: 17.scaled, weight: .medium))
-                .foregroundStyle(FieldColour.TextNIcon.tertiary)
+                .foregroundStyle(FieldColour.Surface.primaryInverted)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
             }
@@ -202,7 +353,7 @@ private struct PasswordInput: View {
             .accessibilityLabel(reveals ? lang.t("Hide password", "إخفاء كلمة المرور") : lang.t("Show password", "إظهار كلمة المرور"))
         }
         .padding(.horizontal, FieldSpace.s16)
-        .fieldInputChrome(focused: isFocused, error: flow.passwordState == .failed)
+        .fieldInputChrome(focused: isFocused, error: error)
         .animation(Motion.snappy, value: reveals)
         // Arrives as the boxes join: fades up from their merged footprint, and leaves the same way.
         .modifier(Materialize(opacity: shown ? 1 : 0, blur: shown ? 0 : 3, scale: shown ? 1 : 0.98))
@@ -350,7 +501,7 @@ private struct OTPBoxes: View {
 
     private func fill(state: AuthFlow.CodeState, active: Bool) -> Color {
         switch state {
-        case .failed: FieldColour.Surface.warningSubtle
+        case .failed: FieldColour.Surface.errorSubtle
         case .verified: FieldColour.Surface.successSubtle
         default: FieldColour.Surface.secondary
         }
@@ -358,7 +509,7 @@ private struct OTPBoxes: View {
 
     private func border(state: AuthFlow.CodeState, wave: Double) -> Color {
         switch state {
-        case .failed: FieldColour.TextNIcon.warning
+        case .failed: FieldColour.Surface.errorBold
         case .verified: FieldColour.Border.successBold
         case .verifying: FieldColour.Surface.actionBold.opacity(0.15 + 0.6 * wave)
         case .entering: .clear
@@ -367,7 +518,7 @@ private struct OTPBoxes: View {
 
     private func digitColor(_ state: AuthFlow.CodeState) -> Color {
         switch state {
-        case .failed: FieldColour.TextNIcon.warning
+        case .failed: FieldColour.TextNIcon.error
         case .verified: FieldColour.TextNIcon.success
         default: FieldColour.TextNIcon.primary
         }
@@ -426,19 +577,20 @@ private struct OTPBoxes: View {
 
 // MARK: - Status
 
-/// The one line under the boxes: while a code is being filled or checked it says what's
-/// happening; otherwise it's the resend line ("Didn't receive OTP? Resend in 14s").
+/// Under the boxes: while a code is filled or checked it says what's happening; once verified, a
+/// green "Verified"; a rejected code gets "Invalid code." above the resend block (Figma OTP states).
 private struct CodeNotice: View {
     var flow: AuthFlow
     @Environment(\.lang) private var lang
 
-    private struct Status: Equatable {
-        var text: String
-        var tone: FieldHelperText.Tone = .neutral
-        var spinning = false
+    private enum Status: Equatable {
+        case verifying(String)
+        case verified
+        case invalid
+        case none
     }
 
-    private var status: Status? {
+    private var status: Status {
         switch flow.codeState {
         case .verifying:
             let text = switch flow.codeSource {
@@ -446,65 +598,65 @@ private struct CodeNotice: View {
             case .mail: lang.t("Filled from Mail. Verifying…", "تمت التعبئة من البريد. جارٍ التحقق…")
             default: lang.t("Verifying…", "جارٍ التحقق…")
             }
-            return Status(text: text, spinning: true)
+            return .verifying(text)
         case .verified:
-            return Status(text: lang.t("Verified", "تم التحقق"), tone: .success)
+            return .verified
         case .failed, .entering:
-            break
+            return flow.showsCodeError ? .invalid : .none
         }
-        if flow.showsCodeError {
-            return Status(text: lang.t("That code didn't work. Check it and try again.", "الرمز غير صحيح. تحقّق منه وحاول مرة أخرى."), tone: .warning)
-        }
-        if let channel = flow.resentVia {
-            let text = switch channel {
-            case .sms: lang.t("New code sent by SMS", "أرسلنا رمزاً جديداً برسالة نصية")
-            case .whatsapp: lang.t("New code sent on WhatsApp", "أرسلنا رمزاً جديداً عبر واتساب")
-            case .email: lang.t("New code sent by email", "أرسلنا رمزاً جديداً بالبريد الإلكتروني")
-            }
-            return Status(text: text)
-        }
-        return nil
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if let status {
+        VStack(alignment: .leading, spacing: FieldSpace.s16) {
+            switch status {
+            case .verifying(let text):
                 HStack(spacing: FieldSpace.s6) {
-                    if status.spinning {
-                        ProgressView().controlSize(.mini).tint(FieldColour.TextNIcon.tertiary)
-                    } else if status.tone == .success {
-                        FieldIcon(.checkCircleFilled, size: 16).foregroundStyle(FieldColour.TextNIcon.success)
-                    } else if status.tone == .warning {
-                        FieldIcon(.warningCircleFilled, size: 16).foregroundStyle(FieldColour.TextNIcon.warning)
-                    }
-                    Text(status.text)
+                    ProgressView().controlSize(.mini).tint(FieldColour.TextNIcon.tertiary)
+                    Text(text)
                         .fieldText(.b14Regular)
-                        .foregroundStyle(status.tone == .warning ? FieldColour.TextNIcon.warning : status.tone == .success ? FieldColour.TextNIcon.success : FieldColour.TextNIcon.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(FieldColour.TextNIcon.tertiary)
                 }
                 .padding(.horizontal, FieldSpace.s8)
-                .id(status.text)
                 .transition(.softRise)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.updatesFrequently)
-            } else {
-                ResendRow(flow: flow)
+            case .verified:
+                HStack(spacing: FieldSpace.s4) {
+                    FieldIcon(.checkCircleFilled, size: 14)
+                    Text(lang.t("Verified", "تم التحقق"))
+                        .fieldText(.b13Medium)
+                }
+                .foregroundStyle(FieldColour.TextNIcon.success)
+                .padding(.horizontal, FieldSpace.s8)
+                .transition(.softRise)
+            case .invalid:
+                Text(lang.t("Invalid code.", "رمز غير صحيح."))
+                    .fieldText(.b13Medium)
+                    .foregroundStyle(FieldColour.TextNIcon.error)
+                    .padding(.leading, FieldSpace.s8)
+                    .transition(.softRise)
+                ResendBlock(flow: flow)
+            case .none:
+                ResendBlock(flow: flow)
                     .transition(.softRise)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 20.scaled, alignment: .leading)
         .animation(Motion.smooth, value: status)
+        .accessibilityElement(children: .contain)
     }
 }
 
 // MARK: - Resend
 
-private struct ResendRow: View {
+/// "Didn't receive OTP? Resend in 14s". Email: "Resend via email" once the timer runs out. Phone:
+/// "Resend on WhatsApp" and "Resend SMS" are always there, greyed out until the timer runs out.
+private struct ResendBlock: View {
     var flow: AuthFlow
     @Environment(\.lang) private var lang
 
+    private var canResend: Bool { flow.resendIn == 0 && !flow.isResending }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: FieldSpace.s12) {
+        VStack(alignment: .leading, spacing: FieldSpace.s8) {
             HStack(spacing: FieldSpace.s4) {
                 Text(lang.t("Didn’t receive OTP?", "لم يصلك الرمز؟"))
                     .fieldText(.b14Regular)
@@ -516,93 +668,67 @@ private struct ResendRow: View {
                         .monospacedDigit()
                         .contentTransition(.numericText(countsDown: true))
                         .transition(.softRise)
+                } else if flow.channel == .email {
+                    Button { flow.resend(via: .email) } label: {
+                        ZStack(alignment: .leading) {
+                            Text(lang.t("Resend via email", "إعادة الإرسال عبر البريد"))
+                                .fieldText(.b14SemiBold)
+                                .foregroundStyle(FieldColour.TextNIcon.action)
+                                .opacity(flow.isResending ? 0 : 1)
+                            if flow.isResending {
+                                ProgressView().controlSize(.mini)
+                            }
+                        }
+                        .frame(minHeight: 32)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(FieldPressStyle(scale: 0.96))
+                    .disabled(flow.isResending)
+                    .transition(.softRise)
                 }
             }
             .padding(.horizontal, FieldSpace.s8)
             .frame(minHeight: 20.scaled)
 
-            if flow.resendIn == 0 {
-                ZStack(alignment: .leading) {
-                    if flow.isResending {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(height: 36.scaled)
-                            .padding(.horizontal, FieldSpace.s8)
-                            .transition(.iconSwap)
-                    } else {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: FieldSpace.s8) { chips }
-                            VStack(alignment: .leading, spacing: FieldSpace.s8) { chips }
-                        }
-                        .transition(.softRise)
+            if flow.channel != .email {
+                HStack(spacing: FieldSpace.s8) {
+                    chip(.whatsapp, title: lang.t("Resend on WhatsApp", "إعادة عبر واتساب")) {
+                        Image(FieldArt.whatsapp).resizable()
+                    }
+                    chip(.sms, title: lang.t("Resend SMS", "إعادة إرسال SMS")) {
+                        Image(FieldIconName.message.assetName).renderingMode(.template).resizable()
                     }
                 }
-                .transition(.softRise)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(Motion.smooth, value: flow.resendIn == 0)
+        .animation(Motion.smooth, value: canResend)
         .animation(Motion.snappy, value: flow.isResending)
     }
 
-    private var chips: some View {
-        ForEach(options, id: \.title) { option in
-            FieldRoundButton(title: option.title, leadingImage: option.icon) {
-                flow.resend(via: option.channel)
+    /// M-NeutralRoundButton H40: tertiary and muted while counting down, white with a border once
+    /// it can be tapped.
+    private func chip<Icon: View>(_ channel: AuthFlow.Channel, title: String, @ViewBuilder icon: () -> Icon) -> some View {
+        let enabled = canResend
+        return Button { flow.resend(via: channel) } label: {
+            HStack(spacing: FieldSpace.s4) {
+                icon()
+                    .frame(width: 16.scaled, height: 16.scaled)
+                    .saturation(enabled ? 1 : 0)
+                    .opacity(enabled ? 1 : 0.55)
+                Text(title)
+                    .fieldText(.b13Medium)
+                    .fixedSize()
             }
+            .foregroundStyle(enabled ? FieldColour.TextNIcon.primary : FieldColour.TextNIcon.muted)
+            .padding(.horizontal, FieldSpace.s12)
+            .frame(height: 40.scaled)
+            .background(Capsule().fill(enabled ? FieldColour.Surface.primary : FieldColour.Surface.tertiary))
+            .overlay(Capsule().strokeBorder(FieldColour.Border.primary, lineWidth: 1).opacity(enabled ? 1 : 0))
+            .contentShape(Capsule())
         }
-    }
-
-    private struct Option {
-        var channel: AuthFlow.Channel
-        var title: String
-        var icon: String
-    }
-
-    /// The channel you're on comes first as "Resend…"; the alternative sits next to it.
-    private var options: [Option] {
-        let sms = Option(channel: .sms, title: lang.t("Resend SMS", "إعادة إرسال SMS"), icon: FieldIconName.message.assetName)
-        let smsInstead = Option(channel: .sms, title: lang.t("Send by SMS", "أرسل عبر SMS"), icon: FieldIconName.message.assetName)
-        let whatsapp = Option(channel: .whatsapp, title: lang.t("Send on WhatsApp", "أرسل عبر واتساب"), icon: FieldIconName.message.assetName)
-        let whatsappAgain = Option(channel: .whatsapp, title: lang.t("Resend on WhatsApp", "إعادة عبر واتساب"), icon: FieldIconName.message.assetName)
-        let email = Option(channel: .email, title: lang.t("Resend email", "إعادة إرسال البريد"), icon: FieldArt.email)
-
-        switch flow.channel {
-        case .sms: return [sms, whatsapp]
-        case .whatsapp: return [whatsappAgain, smsInstead]
-        case .email: return [email]
-        }
-    }
-}
-
-// MARK: - WhatsApp
-
-/// WhatsApp can't autofill, so keep the copy-and-come-back loop as short as possible.
-private struct WhatsAppAssist: View {
-    var flow: AuthFlow
-    @Environment(\.lang) private var lang
-    @Environment(\.openURL) private var openURL
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: FieldSpace.s8) {
-            Text(lang.t("WhatsApp codes can't fill in automatically. Copy it there, then paste it here.",
-                        "لا يمكن تعبئة رموز واتساب تلقائياً. انسخ الرمز من هناك ثم الصقه هنا."))
-                .fieldText(.b12Medium)
-                .foregroundStyle(FieldColour.TextNIcon.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, FieldSpace.s8)
-            HStack(spacing: FieldSpace.s8) {
-                FieldRoundButton(title: lang.t("Open WhatsApp", "افتح واتساب"), leadingImage: FieldIconName.arrowUpRightBold.assetName) {
-                    if let url = URL(string: "whatsapp://") { openURL(url) }
-                }
-                PasteButton(payloadType: String.self) { strings in
-                    let text = strings.first ?? ""
-                    Task { @MainActor in flow.paste(text) }
-                }
-                .buttonBorderShape(.capsule)
-                .labelStyle(.titleAndIcon)
-                .tint(FieldColour.TextNIcon.primary)
-            }
-        }
+        .buttonStyle(FieldPressStyle(scale: 0.96))
+        .disabled(!enabled)
+        .accessibilityHint(enabled ? "" : lang.t("Available when the timer ends", "متاح عند انتهاء المؤقت"))
     }
 }

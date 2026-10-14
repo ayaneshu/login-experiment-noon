@@ -1,30 +1,33 @@
 import SwiftUI
 
-/// Main bottom nav: five destinations, a 56×4 selection bar that slides between them, outline
-/// icons that fill when selected.
+/// Main bottom nav: five destinations, a 56×4 selection bar that slides between them, and the
+/// 32pt duotone glyphs from Figma ("Main bottom Nav"), grey at rest and blue when selected.
 struct BottomNav: View {
     @Binding var selection: AppModel.Tab
+    /// The count on the Cart tab, or nil for no badge.
+    var cartBadge: Int?
     @Environment(\.lang) private var lang
     @Namespace private var indicator
 
-    /// Height above the home indicator.
+    /// Height above the home indicator. The labels sit a little lower, as in Figma, where the row
+    /// is 63pt over a 25pt home bar.
     static let barHeight: CGFloat = 54.scaled
 
     private struct Item: Identifiable {
         let tab: AppModel.Tab
-        let icon: FieldIconName
-        let selectedIcon: FieldIconName
+        /// Asset name of the glyph; the selected tint is `<glyph>-selected`.
+        let glyph: String
         let title: String
         var id: AppModel.Tab { tab }
     }
 
     private var items: [Item] {
         [
-            Item(tab: .home, icon: .navHome, selectedIcon: .navHomeFilled, title: lang.t("Home", "الرئيسية")),
-            Item(tab: .categories, icon: .navCategories, selectedIcon: .navCategoriesFilled, title: lang.t("Categories", "الفئات")),
-            Item(tab: .deals, icon: .navDeals, selectedIcon: .navDealsFilled, title: lang.t("Deals", "العروض")),
-            Item(tab: .account, icon: .navProfile, selectedIcon: .navProfileFilled, title: lang.t("Account", "حسابي")),
-            Item(tab: .cart, icon: .navCart, selectedIcon: .navCartFilled, title: lang.t("Cart", "السلة")),
+            Item(tab: .home, glyph: "nav-home", title: lang.t("Home", "الرئيسية")),
+            Item(tab: .categories, glyph: "nav-categories", title: lang.t("Categories", "الفئات")),
+            Item(tab: .deals, glyph: "nav-deals", title: lang.t("Deals", "العروض")),
+            Item(tab: .account, glyph: "nav-account", title: lang.t("Account", "حسابي")),
+            Item(tab: .cart, glyph: "nav-cart", title: lang.t("Cart", "السلة")),
         ]
     }
 
@@ -34,7 +37,8 @@ struct BottomNav: View {
                 button(item)
             }
         }
-        .frame(height: Self.barHeight)
+        .padding(.horizontal, 16.scaled)
+        .frame(height: Self.barHeight, alignment: .top)
         .background {
             FieldColour.Surface.primary
                 .overlay(alignment: .top) {
@@ -46,6 +50,8 @@ struct BottomNav: View {
 
     private func button(_ item: Item) -> some View {
         let isSelected = selection == item.tab
+        let tint = isSelected ? NoonBrand.navIndicator : FieldColour.TextNIcon.tertiary
+        let badge = item.tab == .cart ? cartBadge : nil
         return Button {
             withAnimation(FieldMotion.Spring.snappy) { selection = item.tab }
         } label: {
@@ -61,26 +67,55 @@ struct BottomNav: View {
                 .frame(height: 4)
 
                 ZStack {
-                    FieldIcon(isSelected ? item.selectedIcon : item.icon, size: 30)
+                    Image(isSelected ? item.glyph + "-selected" : item.glyph)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32.scaled, height: 32.scaled)
                         .id(isSelected)
                         .transition(.opacity)
                 }
-                .foregroundStyle(isSelected ? NoonBrand.navIndicator : FieldColour.TextNIcon.secondary)
-                .padding(.top, 3.scaled)
+                .overlay(alignment: .topTrailing) {
+                    if let badge {
+                        CountBadge(count: badge)
+                            .offset(x: -0.5.scaled)
+                    }
+                }
+                .padding(.top, 7.scaled)
 
                 Text(item.title)
                     .font(FieldTextStyle.b12Medium.font)
                     .tracking(FieldTextStyle.b12Medium.tracking)
-                    .foregroundStyle(isSelected ? FieldColour.TextNIcon.primary : FieldColour.TextNIcon.tertiary)
+                    .foregroundStyle(tint)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
+                    .frame(height: 21.scaled)
             }
             .frame(maxWidth: .infinity)
+            .frame(height: Self.barHeight, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(FieldPressStyle(scale: 0.94))
         .accessibilityLabel(item.title)
+        .accessibilityValue(badge.map { lang.t("\($0) items", "\($0) منتجات") } ?? "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// The 14pt count on the Cart glyph: white numeral on blue, ringed in white so it reads over the
+/// glyph.
+private struct CountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(verbatim: "\(count)")
+            .font(.custom("Noontree-SemiBold", size: 9.scaled))
+            .monospacedDigit()
+            .foregroundStyle(FieldColour.TextNIcon.onSurfaceBold)
+            .padding(.horizontal, count > 9 ? 3.scaled : 0)
+            .frame(minWidth: 14.scaled, minHeight: 14.scaled)
+            .background(Capsule().fill(NoonBrand.navIndicator))
+            .overlay(Capsule().strokeBorder(FieldColour.Border.white, lineWidth: 1))
+            .fixedSize()
+            .accessibilityHidden(true)
     }
 }

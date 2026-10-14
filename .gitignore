@@ -12,3 +12,7 @@ xcuserdata/
 # Python
 __pycache__/
 *.pyc
+
+# Claude Code: other sessions' worktrees and local settings
+.claude/worktrees/
+.claude/settings.local.json

@@ -332,7 +332,7 @@ private struct SettingsCard: View {
     }
 }
 
-private struct RowPressStyle: ButtonStyle {
+struct RowPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(FieldColour.Surface.secondary.opacity(configuration.isPressed ? 1 : 0))

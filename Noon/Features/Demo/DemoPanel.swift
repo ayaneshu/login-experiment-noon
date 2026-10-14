@@ -12,19 +12,58 @@ struct DemoPanel: View {
             List {
                 Section {
                     Picker("Login screen", selection: Binding(get: { app.loginVariant }, set: { app.loginVariant = $0 })) {
+                        Text("Log in | Sign up").tag(LoginVariant.separate)
                         Text("Smart field").tag(LoginVariant.smart)
-                        Text("Email / Phone toggle").tag(LoginVariant.toggle)
+                        Text("Tabs").tag(LoginVariant.toggle)
                     }
                     .pickerStyle(.segmented)
                 } header: {
                     Text("Login flow")
                 } footer: {
-                    Text(app.loginVariant == .smart
-                         ? "One field that detects email or phone as you type. The country code appears for numbers."
-                         : "A toggle chooses Email or Phone number (Phone first). The field only takes the selected kind; each keeps its own draft.")
+                    switch app.loginVariant {
+                    case .separate:
+                        Text("Welcome offers Log in and Create new account. Both check the account as soon as the email or number is complete: green for an account, yellow for a new email, red for a number with none. A new email on Log in continues to Sign up. Sign up takes email only. Checkout and links open Log in directly.")
+                    case .smart:
+                        Text("One field that detects email or phone as you type. The country code appears for numbers.")
+                    case .toggle:
+                        Text("A toggle chooses Email or Phone number (Phone first). The field only takes the selected kind; each keeps its own draft.")
+                    }
                 }
 
                 transitionSection
+
+                Section {
+                    Button {
+                        dismiss()
+                        app.selectedTab = .cart
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(350))
+                            app.beginCheckout()
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("From Checkout").foregroundStyle(Palette.ink)
+                            Text("Cart → Checkout asks a signed-out customer to sign in, full screen.").font(.footnote).foregroundStyle(Palette.ink2)
+                        }
+                    }
+                    Button {
+                        dismiss()
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(350))
+                            // A friend shares a noon address link on WhatsApp; tapping it opens noon.
+                            app.openAddressChat()
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("From an address link").foregroundStyle(Palette.ink)
+                            Text("Simulates opening a \u{201C}save this address\u{201D} link.").font(.footnote).foregroundStyle(Palette.ink2)
+                        }
+                    }
+                } header: {
+                    Text("Entry points")
+                } footer: {
+                    Text("My Account shows the market, language and noon One offer. Checkout and links open the same flow full screen with noon\u{2019}s wordmark and a close button.")
+                }
 
                 Section {
                     scenarioRow(.newDevice, title: "New device", detail: "Nothing remembered. One field for phone or email.")
@@ -40,13 +79,16 @@ struct DemoPanel: View {
                     identityRow("ajain@gmail.com", detail: "Returning · Anmol", .email("ajain@gmail.com"))
                     identityRow("ajain@noon.com", detail: "Returning · Anmol", .email("ajain@noon.com"))
                     identityRow("+971 50 123 4567", detail: "Returning · Anmol", .phone(PhoneNumber(countryID: "AE", nsn: "501234567")))
+                    identityRow("+971 50 246 6770", detail: "Returning · has a passkey", .phone(PhoneNumber(countryID: "AE", nsn: "502466770")))
                     identityRow("+966 55 123 4567", detail: "Returning · Omar", .phone(PhoneNumber(countryID: "SA", nsn: "551234567")))
                     identityRow("+971 55 987 6543", detail: "New customer", .phone(PhoneNumber(countryID: "AE", nsn: "559876543")))
                     identityRow("sara@yahoo.com", detail: "New customer", .email("sara@yahoo.com"))
                 } header: {
                     Text("Test identities")
                 } footer: {
-                    Text("Tap to type it into the field. Any other valid number or email signs up a new customer. Tapping the button with an incomplete entry shows the orange error state.")
+                    Text(app.loginVariant == .separate
+                         ? "Tap to type it into Log in. ajain@noon.com has a passkey; +966 55 123 4567 (Omar) has no password; +971 55 987 6543 has no account, so Log in points to email. Any new email goes to Sign up. After a code sign-in, the passkey offer shows once, then waits 5 minutes if dismissed."
+                         : "Tap to type it into the field. Any other valid number or email signs up a new customer. Tapping the button with an incomplete entry shows the orange error state.")
                 }
 
                 Section {

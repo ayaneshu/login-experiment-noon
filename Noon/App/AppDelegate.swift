@@ -43,12 +43,15 @@ final class RootHostingController: UIHostingController<RootContainer> {
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
-        app.statusBarIsDark ? .darkContent : .lightContent
+        // The WhatsApp chat (entry point 3) is dark chrome over everything.
+        if app.showsAddressChat { return .lightContent }
+        return app.statusBarIsDark ? .darkContent : .lightContent
     }
 
     private func trackStatusBar() {
         withObservationTracking {
             _ = app.statusBarIsDark
+            _ = app.showsAddressChat
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }

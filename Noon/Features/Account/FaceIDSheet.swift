@@ -51,6 +51,15 @@ struct FaceIDSheet: View {
         .sensoryFeedback(.success, trigger: phase) { _, new in new == .enabled }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.5, bounce: 0)) { presented = true }
+            #if DEBUG
+            // QA hook for the success state: launch with `-qaEnableBiometric`.
+            if ProcessInfo.processInfo.arguments.contains("-qaEnableBiometric") {
+                Task {
+                    try? await Task.sleep(for: .seconds(1.2))
+                    enable()
+                }
+            }
+            #endif
             // Once the sheet has landed, the fingerprint slides out from behind the face.
             withAnimation(reduceMotion ? nil : .spring(duration: 0.55, bounce: 0.2).delay(0.28)) { paired = true }
         }
@@ -62,29 +71,30 @@ struct FaceIDSheet: View {
             VStack(spacing: FieldSpace.s24) {
                 ZStack {
                     if phase == .enabled {
-                        FieldIcon(.checkCircleFilled, size: 56)
-                            .foregroundStyle(FieldColour.TextNIcon.success)
-                            .frame(width: 80.scaled, height: 80.scaled)
-                            .background(Circle().fill(FieldColour.Surface.successSubtle))
-                            .transition(.iconSwap)
+                        // Figma 791:196269: a green tick in a pale halo with two sparkles.
+                        Image(FieldArt.biometricOn)
+                            .resizable()
+                            .frame(width: 120.scaled, height: 92.26.scaled)
+                            .transition(.modifier(active: Materialize(opacity: 0, blur: 4, scale: 0.6), identity: Materialize()))
                     } else {
                         illustration
                             .transition(.iconSwap)
                     }
                 }
-                .frame(height: 80.scaled)
+                .frame(height: phase == .enabled ? 92.26.scaled : 80.scaled)
 
-                VStack(spacing: FieldSpace.s4) {
-                    Text(phase == .enabled ? lang.t("\(biometryName) is on", "تم تفعيل \(biometryName)") : lang.t("Enable biometric login", "فعّل تسجيل الدخول بالبصمة"))
+                VStack(spacing: phase == .enabled ? 6.scaled : FieldSpace.s4) {
+                    Text(phase == .enabled ? lang.t("Biometric is on", "تم تفعيل تسجيل الدخول بالبصمة") : lang.t("Enable biometric login", "فعّل تسجيل الدخول بالبصمة"))
                         .fieldText(.h20Bold)
                         .foregroundStyle(FieldColour.TextNIcon.primary)
                         .id("title-\(phase == .enabled)")
                         .transition(.blurReplace)
                     Text(phase == .enabled
-                         ? lang.t("Next time, just look at your iPhone to sign in.", "في المرة القادمة، يكفي أن تنظر إلى جهازك لتسجيل الدخول.")
+                         ? lang.t("Skip the OTP next time & login with Face ID, Touch ID, or PIN/Pattern", "تخطَّ رمز التحقق في المرة القادمة وسجّل الدخول باستخدام Face ID أو Touch ID أو رمز الدخول")
                          : lang.t("Sign in with Face ID, Touch ID, or PIN", "سجّل الدخول باستخدام Face ID أو Touch ID أو رمز الدخول"))
                         .fieldText(.b14Regular)
-                        .foregroundStyle(FieldColour.TextNIcon.tertiary)
+                        .foregroundStyle(phase == .enabled ? FieldColour.TextNIcon.secondary : FieldColour.TextNIcon.tertiary)
+                        .frame(maxWidth: phase == .enabled ? 282.scaled : .infinity)
                         .id("body-\(phase == .enabled)")
                         .transition(.blurReplace)
                 }

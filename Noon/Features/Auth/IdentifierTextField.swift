@@ -78,6 +78,10 @@ struct IdentifierTextField: UIViewRepresentable {
             field.attributedPlaceholder = nil
         }
 
+        // At rest the field lets touches through, so a drag that starts on it moves the sheet; the
+        // row's tap focuses it. VoiceOver keeps the field's own activation.
+        field.isUserInteractionEnabled = isFocused || UIAccessibility.isVoiceOverRunning
+
         if isFocused, !field.isFirstResponder {
             Task { @MainActor in field.becomeFirstResponder() }
         } else if !isFocused, field.isFirstResponder {

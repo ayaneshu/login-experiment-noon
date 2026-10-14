@@ -25,7 +25,21 @@ enum AuthService {
         hasPassword: false
     )
 
-    static let seeded: [Account] = [anmolEmail, anmolWork, anmolPhone, omar]
+    /// A number whose account has a passkey on this device (separate flow, Figma LG-2c).
+    static let anmolPasskeyPhone = Account(
+        firstName: "Anmol", lastName: "Jain",
+        identifier: .phone(PhoneNumber(countryID: "AE", nsn: "502466770")),
+        hasPassword: true
+    )
+
+    static let seeded: [Account] = [anmolEmail, anmolWork, anmolPhone, omar, anmolPasskeyPhone]
+
+    /// Accounts with a passkey on this device: the work address in the seed data, or a remembered
+    /// account that turned Face ID on.
+    static func hasPasskey(_ account: Account, remembered: RememberedAccount?) -> Bool {
+        if let remembered, remembered.account.identifier.key == account.identifier.key { return remembered.passkeyEnabled }
+        return account.identifier.key == anmolWork.identifier.key || account.identifier.key == anmolPasskeyPhone.identifier.key
+    }
 
     /// The code that always fails, so the error state can be demoed.
     static let failingCode = "000000"

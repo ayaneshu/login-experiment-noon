@@ -17,7 +17,7 @@ enum HeaderTone: Equatable {
         switch self {
         case .blue: NoonBrand.headerBlueTop
         case .success: FieldColour.Surface.successBold
-        case .error: FieldColour.Surface.warningBold
+        case .error: FieldColour.Surface.errorBold
         case .welcome: FieldColour.Surface.brandPrimary
         }
     }
@@ -26,7 +26,7 @@ enum HeaderTone: Equatable {
         switch self {
         case .blue: NoonBrand.headerBlueBottom
         case .success: FieldColour.Surface.successExtrabold
-        case .error: FieldPalette.Orange.c800
+        case .error: FieldColour.Surface.errorExtrabold
         case .welcome: FieldColour.Surface.yellowBold
         }
     }
@@ -141,7 +141,7 @@ struct CountryFlag: View {
     }
 }
 
-/// Market pill: flag and chevron on the translucent header chip.
+/// Market pill: flag and country code ("AE") on the translucent header chip.
 struct MarketPill: View {
     let market: Country
     var foreground: Color
@@ -162,9 +162,11 @@ struct MarketPill: View {
                 }
             }
         } label: {
-            HStack(spacing: FieldSpace.s4) {
+            HStack(spacing: FieldSpace.s6) {
                 CountryFlag(country: market)
-                FieldIcon(.chevronDown, size: 14)
+                Text(market.id)
+                    .fieldText(.b13SemiBold)
+                    .fixedSize()
             }
             .foregroundStyle(foreground)
             .padding(.leading, FieldSpace.s12)
@@ -174,6 +176,26 @@ struct MarketPill: View {
             .contentShape(Capsule())
         }
         .accessibilityLabel(lang.t("Shopping in \(market.name)", "التسوّق في \(market.nameAR)"))
+    }
+}
+
+/// M-IconButton (Ghost, H40) on the header: a white cross on the translucent circle. Closes sign-in
+/// when it was opened from checkout or a link.
+struct HeaderCloseButton: View {
+    var label: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            FieldIcon(.cross, size: 20)
+                .foregroundStyle(FieldColour.TextNIcon.onSurfaceBold)
+                .frame(width: 40.scaled, height: 40.scaled)
+                .background(Circle().fill(FieldColour.Surface.overlaySubtle))
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(FieldPressStyle(scale: 0.94))
+        .accessibilityLabel(label)
     }
 }
 
@@ -232,36 +254,49 @@ struct FieldAvatar: View {
 struct FieldInputChrome: ViewModifier {
     var focused: Bool
     var error = false
+    /// Verified (separate flow): a green border, a soft ring and a white-to-grey fill.
+    var success = false
+    /// Separate flow: typing keeps the light border (only error and verified recolour it).
+    var quietFocus = false
 
+    /// Figma field states: at rest white with a light border; focused or typing, the secondary
+    /// surface with a dark border; in error, the secondary surface with a red border.
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: FieldRadius.r12, style: .continuous)
+        let active = focused || error
         content
             .frame(height: 56.scaled)
             .background {
-                shape.fill(
-                    LinearGradient(
-                        colors: [focused ? FieldColour.Surface.primary : FieldColour.Surface.secondary, FieldColour.Surface.secondary],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
+                if success {
+                    shape.fill(LinearGradient(colors: [FieldColour.Surface.primary, FieldColour.Surface.secondary], startPoint: .top, endPoint: .bottom))
+                } else {
+                    shape.fill(active ? FieldColour.Surface.secondary : FieldColour.Surface.primary)
+                }
             }
             .overlay {
-                shape.strokeBorder(error ? FieldColour.TextNIcon.warning : FieldColour.Border.extrabold, lineWidth: 1)
+                shape.strokeBorder(borderColour, lineWidth: 1)
             }
             .background {
-                RoundedRectangle(cornerRadius: FieldRadius.r14, style: .continuous)
-                    .strokeBorder(error ? FieldColour.Border.warning : FieldColour.Surface.muted, lineWidth: 2)
-                    .padding(-2)
-                    .opacity(focused || error ? 1 : 0)
+                // The soft outer ring on verified and error fields.
+                if success || error {
+                    shape.inset(by: -2).strokeBorder(FieldColour.Surface.muted, lineWidth: 2)
+                }
             }
             .animation(FieldMotion.Easing.standard(FieldMotion.Duration.sm), value: focused)
             .animation(FieldMotion.Easing.standard(FieldMotion.Duration.sm), value: error)
+            .animation(FieldMotion.Easing.standard(FieldMotion.Duration.sm), value: success)
+    }
+
+    private var borderColour: Color {
+        if error { return FieldColour.Surface.errorBold }
+        if success { return FieldColour.Border.successBold }
+        return focused && !quietFocus ? FieldColour.Border.extrabold : FieldColour.Border.primary
     }
 }
 
 extension View {
-    func fieldInputChrome(focused: Bool, error: Bool = false) -> some View {
-        modifier(FieldInputChrome(focused: focused, error: error))
+    func fieldInputChrome(focused: Bool, error: Bool = false, success: Bool = false, quietFocus: Bool = false) -> some View {
+        modifier(FieldInputChrome(focused: focused, error: error, success: success, quietFocus: quietFocus))
     }
 
     /// A short, decaying side-to-side shake: "that didn't work".
@@ -309,7 +344,7 @@ struct FieldCaret: View {
 
 /// Helper line under an input: B13 Medium, 8pt inset.
 struct FieldHelperText: View {
-    enum Tone { case neutral, action, success, warning }
+    enum Tone { case neutral, action, success, warning, error }
 
     let text: String
     var tone: Tone = .neutral
@@ -329,6 +364,7 @@ struct FieldHelperText: View {
         case .action: FieldColour.TextNIcon.action
         case .success: FieldColour.TextNIcon.success
         case .warning: FieldColour.TextNIcon.warning
+        case .error: FieldColour.TextNIcon.error
         }
     }
 }

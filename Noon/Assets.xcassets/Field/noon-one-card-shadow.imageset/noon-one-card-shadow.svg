@@ -1,0 +1,15 @@
+<svg width="180.379" height="4.46624" viewBox="0 0 180.379 4.46624" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Card Shadow">
+<path id="Vector 20410" d="M0 2.10786L97.0764 4.46624L180.379 2.56762L97.0764 0L0 2.10786Z" fill="#C5BCC0"/>
+<g id="Ellipse 24037" filter="url(#filter0_f_0_4)">
+<ellipse cx="95.1309" cy="1.78711" rx="54.8652" ry="0.759766" fill="#818181"/>
+</g>
+</g>
+<defs>
+<filter id="filter0_f_0_4" x="39.2656" y="0.0273438" width="111.73" height="3.51953" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+<feGaussianBlur stdDeviation="0.5" result="effect1_foregroundBlur_0_4"/>
+</filter>
+</defs>
+</svg>

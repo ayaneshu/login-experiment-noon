@@ -37,8 +37,11 @@ private struct CelebrationStage: View {
     let celebration: AppModel.Celebration
     let size: CGSize
 
+    /// The separate Log in / Sign up flow uses the "Welcome to noon · success" screen (Figma
+    /// 1123:137766): a light avatar disc, a white tick badge and a soft green glow that holds.
+    private var isSuccessScreen: Bool { app.flow.isSeparate }
     /// The avatar is drawn at hero size and only ever scaled down, so it stays crisp.
-    private let heroSize: CGFloat = 80.scaled
+    private var heroSize: CGFloat { (isSuccessScreen ? 84 : 80).scaled }
     private let landedSize: CGFloat = 48.scaled
     private let resolvedSize: CGFloat = 56.scaled
 
@@ -65,7 +68,7 @@ private struct CelebrationStage: View {
         let origin = celebration.origin == .zero ? CGPoint(x: size.width / 2, y: size.height * 0.36) : celebration.origin
         _avatarX = State(initialValue: origin.x)
         _avatarY = State(initialValue: origin.y)
-        _avatarScale = State(initialValue: 56 / 80)
+        _avatarScale = State(initialValue: 56 / 82)
     }
 
     private var heroPoint: CGPoint { CGPoint(x: size.width / 2, y: size.height * 0.36) }
@@ -108,14 +111,25 @@ private struct CelebrationStage: View {
 
     // MARK: - Pieces
 
+    private var avatarFill: Color {
+        if avatarGreen { return FieldColour.Surface.successBold }
+        if avatarSettled { return FieldColour.Surface.tertiary }
+        return isSuccessScreen ? FieldPalette.Grey.c50 : FieldColour.Surface.primary
+    }
+
     private var avatar: some View {
         Circle()
-            .fill(avatarGreen ? FieldColour.Surface.successBold : (avatarSettled ? FieldColour.Surface.tertiary : FieldColour.Surface.primary))
-            .shadow(color: .black.opacity(avatarSettled ? 0 : 0.08), radius: 18, y: 8)
+            .fill(avatarFill)
+            .overlay {
+                if isSuccessScreen, !avatarGreen, !avatarSettled {
+                    Circle().strokeBorder(FieldPalette.Grey.c200, lineWidth: 1)
+                }
+            }
+            .shadow(color: .black.opacity(avatarSettled || isSuccessScreen ? 0 : 0.08), radius: 18, y: 8)
             .overlay {
                 if let initial = celebration.initial {
                     Text(initial)
-                        .font(FieldTextStyle.h40Bold.font)
+                        .font(isSuccessScreen ? .custom("Noontree-SemiBold", size: 36.scaled) : FieldTextStyle.h40Bold.font)
                         .foregroundStyle(avatarGreen ? FieldColour.TextNIcon.onSurfaceBold : FieldColour.TextNIcon.primary)
                 } else {
                     FieldIcon(.navProfile, size: 40)
@@ -123,19 +137,34 @@ private struct CelebrationStage: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(FieldColour.Surface.successBold)
-                    .overlay {
-                        CheckShape()
-                            .trim(from: 0, to: tickDrawn ? 1 : 0)
-                            .stroke(FieldColour.TextNIcon.onSurfaceBold, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
-                            .frame(width: 11.scaled, height: 8.5.scaled)
+                Group {
+                    if isSuccessScreen {
+                        // Figma: a 30pt white disc holding the filled check.
+                        Circle()
+                            .fill(FieldColour.Surface.primary)
+                            .overlay {
+                                FieldIcon(.checkCircleFilled, size: 26)
+                                    .foregroundStyle(FieldColour.Surface.successBold)
+                                    .scaleEffect(tickDrawn ? 1 : 0.4)
+                            }
+                            .frame(width: 30.scaled, height: 30.scaled)
+                            .offset(x: 1, y: 1)
+                    } else {
+                        Circle()
+                            .fill(FieldColour.Surface.successBold)
+                            .overlay {
+                                CheckShape()
+                                    .trim(from: 0, to: tickDrawn ? 1 : 0)
+                                    .stroke(FieldColour.TextNIcon.onSurfaceBold, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                                    .frame(width: 11.scaled, height: 8.5.scaled)
+                            }
+                            .frame(width: 26.scaled, height: 26.scaled)
+                            .overlay(Circle().strokeBorder(FieldColour.Surface.tertiary, lineWidth: 2.5).padding(-2.5))
+                            .offset(x: 2, y: 2)
                     }
-                    .frame(width: 26.scaled, height: 26.scaled)
-                    .overlay(Circle().strokeBorder(FieldColour.Surface.tertiary, lineWidth: 2.5).padding(-2.5))
-                    .scaleEffect(tickShown ? 1 : 0.6)
-                    .opacity(tickShown ? 1 : 0)
-                    .offset(x: 2, y: 2)
+                }
+                .scaleEffect(tickShown ? 1 : 0.6)
+                .opacity(tickShown ? 1 : 0)
             }
             .frame(width: heroSize, height: heroSize)
             .accessibilityHidden(true)
@@ -148,7 +177,7 @@ private struct CelebrationStage: View {
                 .foregroundStyle(FieldColour.TextNIcon.primary)
             Text(celebration.subtitle)
                 .fieldText(.b14Regular)
-                .foregroundStyle(FieldColour.TextNIcon.tertiary)
+                .foregroundStyle(isSuccessScreen ? FieldColour.TextNIcon.secondary : FieldColour.TextNIcon.tertiary)
                 .modifier(Materialize(opacity: greetingShown ? 1 : 0, blur: greetingShown ? 0 : 6, y: greetingShown ? 0 : 6))
                 .animation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.5).delay(greetingShown ? 0.06 : 0), value: greetingShown)
         }
@@ -197,17 +226,31 @@ private struct CelebrationStage: View {
         SoundEffects.shared.play(.signInSuccess)
         pulse += 1
         await pause(0.16)
-        withAnimation(.easeOut(duration: 1.1)) { rippleOpacity = 0 }
+        // The success screen keeps a soft glow behind the greeting; the classic one lets it go.
+        withAnimation(.easeOut(duration: 1.1)) { rippleOpacity = isSuccessScreen ? 0.55 : 0 }
         withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.5)) { greetingShown = true }
 
         // Long enough to read the greeting, short enough not to hold anyone up.
-        await pause(0.85)
+        await pause(isSuccessScreen ? 1.1 : 0.85)
 
         // 3. Arrive: the greeting steps back and the avatar flies into the profile card.
         app.celebrationLanding()
         withAnimation(.easeOut(duration: 0.2)) {
             greetingGone = true
             tickShown = false
+        }
+        withAnimation(.easeOut(duration: 0.4)) { rippleOpacity = 0 }
+        guard celebration.landsOnAccount else {
+            // Checkout or a link: no profile card to land in, so the avatar settles and fades
+            // while sign-in closes back to where it was opened.
+            withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.45)) {
+                avatarScale = 0.8
+                avatarOpacity = 0
+                avatarBlur = 4
+            }
+            await pause(0.35)
+            app.celebrationFinished()
+            return
         }
         let target = app.avatarCenter == .zero ? CGPoint(x: 48, y: 110) : app.avatarCenter
         withAnimation(.spring(duration: 0.62, bounce: 0)) { avatarY = target.y }

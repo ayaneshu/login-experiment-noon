@@ -1,12 +1,18 @@
 import SwiftUI
 
-/// "Choose your account": the account this device remembers, one tap from signed in.
+/// "Choose your account": the account this device remembers, one tap from signed in. Its menu
+/// offers a code instead of Face ID, or removes the account from this iPhone.
 struct ChooseAccountStep: View {
     @Environment(AppModel.self) private var app
     var flow: AuthFlow
+    var onOpen: (URL) -> Void = { _ in }
+    /// Height of everything above the fold (the footer waits under the nav).
+    var onFoldHeight: (CGFloat) -> Void = { _ in }
     @Environment(\.lang) private var lang
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var biometry = Biometrics.kind
     @State private var confirmsRemoval = false
+    @State private var menuOpen = false
 
     private var biometryName: String {
         switch biometry {
@@ -17,26 +23,50 @@ struct ChooseAccountStep: View {
     }
 
     var body: some View {
-        VStack(spacing: FieldSpace.s20) {
-            AuthTitle(title: lang.t("Choose your account", "اختر حسابك"))
-                .padding(.bottom, -FieldSpace.s8)
+        VStack(spacing: 0) {
+            VStack(spacing: FieldSpace.s20) {
+                AuthTitle(title: lang.t("Choose your account", "اختر حسابك"), bottomPadding: 0)
 
-            if let remembered = flow.remembered {
-                card(remembered)
+                if let remembered = flow.remembered {
+                    card(remembered)
+                        .zIndex(1)
+                }
+
+                FieldLabeledDivider(label: lang.t("OR", "أو"), dashed: true)
+
+                // Figma M-SecondaryButton (H52): the other way in.
+                FieldButton(
+                    title: flow.isSeparate
+                        ? lang.t("Continue with different account", "تابِع بحساب آخر")
+                        : lang.t("Sign in with another account", "سجّل الدخول بحساب آخر"),
+                    tone: .secondary,
+                    size: .h52,
+                    trailingIcon: .chevronRight,
+                    textStyle: .a16SemiBold,
+                    action: flow.useDifferentAccount
+                )
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onFoldHeight($0) }
 
-            FieldLabeledDivider(label: lang.t("OR", "أو"))
-
-            // Figma M-SecondaryButton: the other way in, a clear second choice after "OR".
-            FieldButton(
-                title: lang.t("Sign in with different account", "سجّل الدخول بحساب آخر"),
-                tone: .secondary,
-                size: .h56,
-                trailingIcon: .chevronRight,
-                textStyle: .a16SemiBold,
-                action: flow.useDifferentAccount
-            )
+            AuthFooter(onOpen: onOpen)
+                .padding(.top, FieldSpace.s20)
         }
+        // Tapping anywhere else closes the menu.
+        .background {
+            if menuOpen {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeMenu() }
+            }
+        }
+        #if DEBUG
+        .task {
+            // QA hook for screenshots of the open menu: launch with `-qaMenu`.
+            guard ProcessInfo.processInfo.arguments.contains("-qaMenu") else { return }
+            try? await Task.sleep(for: .seconds(1.4))
+            withAnimation(.spring(duration: 0.3, bounce: 0)) { menuOpen = true }
+        }
+        #endif
         .confirmationDialog(
             lang.t("Remove this account from this iPhone?", "إزالة هذا الحساب من هذا الجهاز؟"),
             isPresented: $confirmsRemoval,
@@ -70,24 +100,12 @@ struct ChooseAccountStep: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
 
-                Menu {
-                    Button(role: .destructive) {
-                        confirmsRemoval = true
-                    } label: {
-                        Label(lang.t("Remove from this iPhone", "إزالة من هذا الجهاز"), systemImage: "person.crop.circle.badge.minus")
-                    }
-                } label: {
-                    FieldIcon(.threeDotMenu, size: 24)
-                        .foregroundStyle(FieldColour.TextNIcon.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .padding(.vertical, -FieldSpace.s10)
-                .padding(.trailing, -FieldSpace.s10)
-                .accessibilityLabel(lang.t("Account options", "خيارات الحساب"))
+                menuButton(remembered)
             }
+            // The open menu hangs over the rest of the card.
+            .zIndex(1)
 
-            VStack(spacing: FieldSpace.s12) {
+            VStack(spacing: FieldSpace.s8) {
                 if remembered.passkeyEnabled {
                     FieldButton(
                         title: lang.t("Log in with \(biometryName)", "سجّل الدخول باستخدام \(biometryName)"),
@@ -95,81 +113,142 @@ struct ChooseAccountStep: View {
                         size: .h52,
                         leadingImage: FieldArt.faceID,
                         leadingImageSize: 20,
-                        textStyle: .b14SemiBold,
+                        textStyle: .a16SemiBold,
                         isLoading: flow.biometricState == .scanning,
                         loadingImage: FieldArt.faceID,
                         action: signInWithPasskey
                     )
                     .reportCenter { flow.ctaAnchor = $0 }
-                    otpTextAction
                 } else {
-                    // Without Face ID, the code is the main way in.
+                    // Without Face ID, the code is the way in.
                     FieldButton(
                         title: lang.t("Login with OTP", "سجّل الدخول برمز التحقق"),
                         tone: .neutral,
                         size: .h52,
-                        leadingImage: FieldArt.passwordAlt,
+                        leadingImage: FieldIconName.message.assetName,
                         leadingImageSize: 20,
-                        textStyle: .b14SemiBold,
+                        textStyle: .a16SemiBold,
                         isLoading: flow.isSending,
                         action: flow.sendCodeToRememberedAccount
                     )
                     .reportCenter { flow.ctaAnchor = $0 }
                 }
-            }
 
-            if flow.biometricState == .failed {
-                FieldHelperText(
-                    text: lang.t("\(biometryName) didn't recognise you. Try again or log in with OTP.",
-                                 "لم يتعرّف \(biometryName) عليك. حاول مرة أخرى أو سجّل الدخول برمز التحقق."),
-                    tone: .warning
-                )
-                .padding(.top, -FieldSpace.s8)
-                .transition(.softRise)
+                if flow.biometricState == .failed {
+                    FieldHelperText(
+                        text: lang.t("\(biometryName) didn't recognise you. Try again or log in with OTP.",
+                                     "لم يتعرّف \(biometryName) عليك. حاول مرة أخرى أو سجّل الدخول برمز التحقق."),
+                        tone: .error
+                    )
+                    .transition(.softRise)
+                }
             }
         }
         .padding(FieldSpace.s12)
-        .background(shape.fill(FieldColour.Surface.primary))
-        .overlay(shape.strokeBorder(FieldColour.Border.primary, lineWidth: 1))
+        // The border sits behind the content so the open menu covers it.
+        .background {
+            shape.fill(FieldColour.Surface.primary)
+                .overlay(shape.strokeBorder(FieldColour.Border.primary, lineWidth: 1))
+        }
         .animation(Motion.smooth, value: flow.biometricState)
     }
 
-    /// Figma "Actions": the quiet companion to Face ID. A 20pt icon on a secondary chip and a label.
-    private var otpTextAction: some View {
-        Button(action: flow.sendCodeToRememberedAccount) {
-            ZStack {
-                HStack(spacing: FieldSpace.s6) {
-                    Image(FieldArt.passwordAlt)
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 20.scaled, height: 20.scaled)
-                        .padding(FieldSpace.s4)
-                        .background(Circle().fill(FieldColour.Surface.secondary))
-                    Text(lang.t("Login with OTP", "سجّل الدخول برمز التحقق"))
-                        .fieldText(.b14SemiBold)
-                }
-                .opacity(flow.isSending ? 0 : 1)
-
-                ProgressView()
-                    .tint(FieldColour.TextNIcon.primary)
-                    .opacity(flow.isSending ? 1 : 0)
-            }
-            .foregroundStyle(FieldColour.TextNIcon.primary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 40.scaled)
-            .contentShape(RoundedRectangle(cornerRadius: FieldRadius.r12, style: .continuous))
+    /// ⋮ opens a small menu just above it, growing from the dots (Figma 976:40044).
+    private func menuButton(_ remembered: RememberedAccount) -> some View {
+        Button {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0)) { menuOpen.toggle() }
+        } label: {
+            FieldIcon(.threeDotMenu, size: 24)
+                .foregroundStyle(FieldColour.TextNIcon.secondary)
+                .frame(width: 36.scaled, height: 36.scaled)
+                .background(Circle().fill(FieldColour.Surface.secondary).opacity(menuOpen ? 1 : 0))
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
-        .buttonStyle(FieldPressStyle())
-        .disabled(flow.isSending)
-        .animation(FieldMotion.Easing.standard(FieldMotion.Duration.sm), value: flow.isSending)
+        .buttonStyle(FieldPressStyle(scale: 0.92))
+        .padding(.vertical, -FieldSpace.s10)
+        .padding(.trailing, -FieldSpace.s10)
+        .accessibilityLabel(lang.t("Account options", "خيارات الحساب"))
+        .overlay(alignment: .bottomTrailing) {
+            if menuOpen {
+                AccountMenu(
+                    offersCode: remembered.passkeyEnabled,
+                    onCode: {
+                        closeMenu()
+                        flow.sendCodeToRememberedAccount()
+                    },
+                    onRemove: {
+                        closeMenu()
+                        confirmsRemoval = true
+                    }
+                )
+                .fixedSize()
+                .alignmentGuide(.bottom) { $0[.bottom] + 44 / 2 + 4 }
+                .alignmentGuide(.trailing) { $0[.trailing] - 2 }
+                .transition(.modifier(
+                    active: Materialize(opacity: 0, blur: 3, scale: 0.92),
+                    identity: Materialize()
+                ))
+            }
+        }
+    }
+
+    private func closeMenu() {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.25, bounce: 0)) { menuOpen = false }
     }
 
     private func signInWithPasskey() {
+        // The separate flow shows the system-style Face ID sheet first; it scans on its own.
+        if flow.isSeparate {
+            flow.beginFaceIDPrompt()
+            return
+        }
         flow.signInWithPasskey(
             reason: lang.t("Log in to noon", "تسجيل الدخول إلى نون"),
             fallbackTitle: lang.t("Login with OTP", "سجّل الدخول برمز التحقق")
         )
+    }
+}
+
+/// Dropdown menu: white card, 16 radius, soft shadow; 24pt icon and B14 Medium per item.
+private struct AccountMenu: View {
+    let offersCode: Bool
+    var onCode: () -> Void
+    var onRemove: () -> Void
+    @Environment(\.lang) private var lang
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: FieldRadius.r16, style: .continuous)
+        VStack(alignment: .leading, spacing: 0) {
+            if offersCode {
+                item(icon: .message, title: lang.t("Log in with OTP", "سجّل الدخول برمز التحقق"), tint: FieldColour.TextNIcon.primary, action: onCode)
+                FieldDashedLine()
+                    .frame(height: 1)
+                    .padding(.horizontal, FieldSpace.s14)
+            }
+            item(icon: .bin, title: lang.t("Remove account", "إزالة الحساب"), tint: FieldColour.TextNIcon.error, action: onRemove)
+        }
+        .padding(.vertical, FieldSpace.s4)
+        .background(shape.fill(FieldColour.Surface.primary))
+        .overlay(shape.strokeBorder(FieldColour.Surface.muted, lineWidth: 1))
+        .shadow(color: Color(fieldHex: 0x101628, alpha: 0.14), radius: 16, y: 12)
+    }
+
+    private func item(icon: FieldIconName, title: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: FieldSpace.s10) {
+                FieldIcon(icon, size: 24)
+                Text(title)
+                    .fieldText(.b14Medium)
+                    .fixedSize()
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, FieldSpace.s14)
+            .padding(.vertical, FieldSpace.s12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPressStyle())
     }
 }
 
