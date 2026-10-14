@@ -1,0 +1,417 @@
+/* The website around the phone, built on lightweight-ui: its tokens and components carry the
+   look; this file only lays the page out. The phone has its own styles (see .app-surface). */
+
+:root {
+  /* The kit's softer, iOS-style corner smoothing; Chromium draws its default nearly square. */
+  --lui-corner-shape: squircle;
+}
+
+body.lui {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-ui);
+  line-height: 1.5;
+}
+
+/* First focusable element: jumps past the header and flow list. */
+.skip-link {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: var(--radius-xl);
+  background: var(--color-ink);
+  color: var(--color-on-ink);
+  font-weight: 500;
+  translate: 0 -200%;
+}
+.skip-link:focus-visible {
+  translate: 0 0;
+}
+.stage:focus,
+.map:focus {
+  outline: none;
+}
+
+.site {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Flow list | stage. Two columns while the phone still gets room for a readable frame (~360px
+   beside the 272px list), which runs out just under 720px. */
+.site-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+}
+
+.site-rail {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-inline-end: 1px solid var(--color-line);
+  padding: 8px 12px 32px;
+}
+
+/* Stage: the live phone on a faint wash, with what it's showing above and below. */
+.stage {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-wash-2);
+}
+.stage-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 16px;
+}
+.stage-where {
+  flex: 1;
+  min-width: 0;
+}
+.stage-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+.stage-panels {
+  display: none;
+  gap: 8px;
+}
+.stage-slot {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 16px;
+}
+/* Under the phone: what the screen shows, then the helpers it can use. Both keep their space
+   when empty, so the phone never resizes as you move between screens. */
+.stage-foot {
+  padding: 12px 16px 16px;
+}
+.stage-note {
+  min-height: calc(var(--text-label) * 1.5 * 2);
+  max-width: 44ch;
+  margin: 0 auto;
+  text-align: center;
+  text-wrap: pretty;
+}
+.stage-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  min-height: 36px;
+  margin-top: 4px;
+}
+.context-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The helpers sit at the foot of the page, so their menu opens upward. */
+.menu-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: 50% 100%;
+}
+.menu-check-space {
+  display: inline-block;
+  width: 16px;
+}
+.menu-account {
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flow list (rail and the small-screen dialog). */
+.flow-list-start {
+  padding-top: 8px;
+}
+.flow-list-group + .flow-list-group {
+  margin-top: 24px;
+}
+.flow-list-group > .flow-list-overline {
+  padding: 12px 8px 4px;
+}
+.flow-num {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One row per flow; its screens fold out beneath it. */
+.flow-acc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-acc-heading {
+  margin: 0;
+  font: inherit;
+}
+.flow-acc-trigger {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xl);
+  text-align: start;
+  font-size: var(--text-ui);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition-property: background-color;
+}
+@media (hover: hover) {
+  .flow-acc-trigger:hover {
+    background: var(--color-wash-3);
+  }
+}
+/* The flow the phone is in reads heavier, even folded away. */
+.flow-acc-trigger[aria-expanded='true'],
+.flow-acc-trigger[data-current] {
+  font-weight: 600;
+}
+.flow-acc-title {
+  flex: 1;
+  min-width: 0;
+}
+/* Number, count and chevron sit on the title's first line when a long title wraps. */
+.flow-acc-trigger > .flow-num,
+.flow-acc-count {
+  line-height: calc(var(--text-ui) * 1.5);
+}
+.flow-acc-count {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.flow-acc-chevron {
+  flex: none;
+  margin-top: calc((var(--text-ui) * 1.5 - 14px) / 2);
+  color: var(--color-muted);
+  transition: rotate 200ms var(--ease-out);
+}
+.flow-acc-trigger[aria-expanded='true'] .flow-acc-chevron {
+  rotate: 180deg;
+}
+.flow-acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--ease-out);
+}
+.flow-acc-panel[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.flow-acc-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.flow-acc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 10px;
+}
+
+/* Settings. */
+/* The kit's Toggle pads 4px for its hover wash; pull it out so its text meets the column edge. */
+.toggle-row {
+  margin-inline: -4px;
+  width: calc(100% + 8px);
+}
+.transition-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.transition-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tune summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font-size: var(--text-label);
+  font-weight: 500;
+  color: var(--color-muted);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-lg);
+}
+.tune summary::-webkit-details-marker {
+  display: none;
+}
+.tune summary svg {
+  transition: rotate 160ms var(--ease-out);
+}
+.tune[open] summary svg {
+  rotate: 90deg;
+}
+.tune-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+.knob-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-label);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.knob-unit {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+/* In the settings dialog the groups line up with its 24px title. */
+.dialog-settings {
+  padding-inline: 8px;
+}
+
+/* Flow map. */
+.map {
+  --map-gutter: clamp(16px, 4vw, 40px);
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 32px var(--map-gutter) 64px;
+}
+.map-intro {
+  max-width: 64ch;
+  margin-bottom: 32px;
+}
+.map-intro p {
+  margin-top: 4px;
+}
+.map-group + .map-group {
+  margin-top: 48px;
+}
+.map-flow {
+  margin-top: 24px;
+}
+.map-flow-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.map-flow-summary {
+  max-width: 72ch;
+  margin-top: 2px;
+}
+.map-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  overflow-x: auto;
+  /* Bleeds to the page edges so shadows aren't clipped; the first phone lines up with the text. */
+  margin-inline: calc(-1 * var(--map-gutter));
+  padding: 12px calc(var(--map-gutter) - 6px) 28px;
+  scroll-padding-inline: calc(var(--map-gutter) - 6px);
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.map-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  flex: none;
+}
+.map-arrow {
+  align-self: center;
+  margin-top: -32px;
+  color: var(--color-line-control);
+}
+.map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px;
+  /* Concentric with the thumbnail's device corner: 68px × 0.36 + the 6px padding. */
+  border-radius: 30px;
+  text-align: start;
+  scroll-snap-align: start;
+  transition-property: background-color, scale;
+}
+@media (hover: hover) {
+  .map-card:hover {
+    background: var(--color-wash-3);
+  }
+}
+.map-card-text {
+  max-width: 144px;
+  padding: 0 4px;
+}
+.map-card-title {
+  display: block;
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 1.35;
+}
+.map-thumb-placeholder {
+  border-radius: 26px;
+  background: var(--color-wash-4);
+}
+
+/* Below two columns: the flow list opens as a dialog from the stage bar. */
+@media (max-width: 719px) {
+  .site-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .site-rail {
+    display: none;
+  }
+  .stage-panels {
+    display: flex;
+  }
+}
+
+.label-short {
+  display: none;
+}
+
+/* Phones: the bare screen fills the width; the bar keeps only what fits. */
+@media (max-width: 519px) {
+  .brand-name,
+  .label-long,
+  .stage-where {
+    display: none;
+  }
+  .label-short {
+    display: inline;
+  }
+  .stage-bar {
+    padding: 8px 12px;
+  }
+  .stage-slot {
+    padding: 0;
+  }
+  .stage-foot {
+    padding: 8px 12px 12px;
+  }
+}

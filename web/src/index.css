@@ -1,0 +1,48 @@
+@import './design/tokens.css';
+
+:root {
+  --font-noon: 'Noontree', -apple-system, 'SF Pro Text', 'SF Arabic', 'Geeza Pro', system-ui, sans-serif;
+  /* Colours the Log in / Sign up file uses that the token set doesn't carry yet. */
+  --header-blue-top: #1155cb;
+  --header-blue-bottom: #002888;
+  --nav-indicator: #1155cb;
+  color-scheme: light;
+}
+
+/* The app's element resets, in the lowest layer: imported before lightweight-ui, so the site's kit
+   components (whose layers come later) win over them, while the phone, which the kit's own reset
+   doesn't reach, keeps them. */
+@layer app-base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font-noon);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:disabled { cursor: default; }
+  input { font: inherit; color: inherit; background: none; border: 0; outline: none; padding: 0; margin: 0; min-width: 0; }
+  img { display: block; }
+}
+
+/* The phone and other app renders: the site's kit styles stop at this edge (see vite.config.ts),
+   so restate what the app inherited from the page before the kit arrived. */
+.app-surface { font-family: var(--font-noon); font-size: 16px; font-weight: 400; line-height: normal; letter-spacing: normal; color: #1d2539; text-align: start; }
+
+/* Inside the phone everything is the app: no text selection, no focus rings drawn by the browser
+   (fields draw their own focus state), the iOS look. */
+.phone-screen { user-select: none; -webkit-user-select: none; cursor: default; }
+.phone-screen input { user-select: text; -webkit-user-select: text; }
+.phone-screen :focus-visible { outline: 2px solid var(--surface-action-bold); outline-offset: 2px; border-radius: 8px; }
+.phone-screen input:focus-visible { outline: none; }
+.phone-screen ::-webkit-scrollbar { display: none; }
+.phone-screen * { scrollbar-width: none; }
+
+[dir='rtl'] .flips-rtl { transform: scaleX(-1); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes caret { 0%, 45% { opacity: 1; } 50%, 95% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
