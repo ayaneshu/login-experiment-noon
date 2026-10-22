@@ -118,7 +118,8 @@ function Tag({ text, style }: { text: string; style: CSSProperties }) {
         whiteSpace: 'nowrap',
       }}
     >
-      {text}
+      {/* The art stays left-to-right; the words take their own direction, so Arabic reads right. */}
+      <span dir="auto">{text}</span>
     </div>
   )
 }

@@ -5,8 +5,11 @@ import { Observable, sleep } from './observable'
 export interface Account {
   firstName: string | null
   lastName: string | null
+  /** The primary email or number the account was created with. */
   identifier: Identifier
   hasPassword: boolean
+  /** A number added to an email account and verified: it logs in to the same account. */
+  verifiedPhone?: Identifier
 }
 
 /** What this device remembers after a successful sign-in. */
@@ -19,7 +22,7 @@ export const fullName = (a: Account) => [a.firstName, a.lastName].filter(Boolean
 
 /** Stand-in for noon's identity API. Latencies are realistic so every loading state is visible. */
 export const AuthService = {
-  anmolEmail: { firstName: 'Anmol', lastName: 'Jain', identifier: emailID('ajain@gmail.com'), hasPassword: true } as Account,
+  anmolEmail: { firstName: 'Anmol', lastName: 'Jain', identifier: emailID('ajain@gmail.com'), hasPassword: true, verifiedPhone: phoneID('AE', '523456789') } as Account,
   anmolPhone: { firstName: 'Anmol', lastName: 'Jain', identifier: phoneID('AE', '501234567'), hasPassword: true } as Account,
   /** Has a passkey on this device in the seed data. */
   anmolWork: { firstName: 'Anmol', lastName: 'Jain', identifier: emailID('ajain@noon.com'), hasPassword: true } as Account,
@@ -40,9 +43,12 @@ export const AuthService = {
   /** The code that always fails, so the error state can be demoed. */
   failingCode: '000000',
 
+  /** Finds the account by its primary email or number, or by a number verified on it. */
   async lookup(identifier: Identifier, registered: Record<string, Account>): Promise<Account | null> {
     await sleep(550)
-    return this.seeded.find((a) => idKey(a.identifier) === idKey(identifier)) ?? registered[idKey(identifier)] ?? null
+    const key = idKey(identifier)
+    const matches = (a: Account) => idKey(a.identifier) === key || (a.verifiedPhone != null && idKey(a.verifiedPhone) === key)
+    return this.seeded.find(matches) ?? registered[key] ?? Object.values(registered).find(matches) ?? null
   },
 
   async sendCode(_identifier: Identifier): Promise<string> {

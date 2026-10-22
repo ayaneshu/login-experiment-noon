@@ -88,7 +88,7 @@ export function IdentifierField({ focused, setFocused, onCountryTap }: { focused
       </CountrySlot>
       <InputChrome
         focused={focused}
-        error={flow.showsInputError || flow.signupPhoneError}
+        error={flow.fieldShowsError}
         success={isFound}
         quietFocus={flow.isSeparate}
         onClick={() => setFocused(true)}

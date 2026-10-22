@@ -256,7 +256,8 @@ export function AuthBackdrop({
                 <FormChipButton chip={formChip} />
               </motion.div>
             ) : (
-              !showsBack &&
+              // Welcome keeps its language switch even with Back (reached from a saved account).
+              (!showsBack || flow.step === 'welcome') &&
               !leadingClose && (
                 <motion.div key="trailing" {...headerSwap} style={{ paddingInlineEnd: 4, pointerEvents: controlHit }}>
                   {isMyAccount ? (

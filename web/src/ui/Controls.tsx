@@ -261,9 +261,11 @@ export function InputChrome({
   )
 }
 
-export type HelperTone = 'neutral' | 'action' | 'success' | 'warning' | 'error'
+/** `secondary` is for a note that explains what just happened, so it has to read at a glance. */
+export type HelperTone = 'neutral' | 'secondary' | 'action' | 'success' | 'warning' | 'error'
 const HELPER_COLOUR: Record<HelperTone, string> = {
   neutral: colour.text.muted,
+  secondary: colour.text.tertiary,
   action: colour.text.action,
   success: colour.text.success,
   warning: colour.text.warning,

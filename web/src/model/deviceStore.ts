@@ -3,9 +3,12 @@ import { Observable } from './observable'
 import type { Account, RememberedAccount } from './services'
 import { idKey } from './identifier'
 
-/** Which sign-in approach to test: separate Log in / Sign up screens (the newest), one smart field,
- *  or Phone number | Email tabs. */
-export type LoginVariant = 'separate' | 'smart' | 'toggle'
+/** Which sign-in approach to test: separate Log in / Sign up screens (the 16 Oct revision, the
+ *  newest, or the first version), one smart field, or Phone number | Email tabs. */
+export type LoginVariant = 'oct16' | 'separate' | 'smart' | 'toggle'
+
+/** Both separate Log in / Sign up variants share Welcome, Log in and Sign up. */
+export const isSeparateFamily = (variant: LoginVariant) => variant === 'oct16' || variant === 'separate'
 
 /** How the sign-in header changes colour for success and error. */
 export type HeaderTransitionStyle = 'smooth' | 'ripple' | 'dissolve' | 'bloom'
@@ -91,10 +94,10 @@ export class DeviceStore extends Observable {
   registered: Record<string, Account> = {}
   simulateAutofill = true
   lang: Lang = 'en'
-  loginVariant: LoginVariant = 'separate'
+  loginVariant: LoginVariant = 'oct16'
   headerTransition: HeaderTransitionSettings = defaultHeaderTransition()
   soundOn = true
-  flowVersion = 3
+  flowVersion = 4
   passkeyOfferDismissedAt: number | null = null
 
   constructor(private persist: boolean) {
@@ -103,10 +106,10 @@ export class DeviceStore extends Observable {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Persisted> | null
       if (saved) Object.assign(this, saved)
-      // The separate Log in / Sign up flow is the newest approach: start everyone on it once.
-      if ((saved?.flowVersion ?? 0) < 3) {
-        this.loginVariant = 'separate'
-        this.flowVersion = 3
+      // Variant - 16 Oct is the newest approach: start everyone on it once.
+      if ((saved?.flowVersion ?? 0) < 4) {
+        this.loginVariant = 'oct16'
+        this.flowVersion = 4
         this.save()
       }
     } catch {

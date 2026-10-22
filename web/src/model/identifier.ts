@@ -81,7 +81,8 @@ export const PhoneFormatter = {
 
 // MARK: - Email
 
-const PROVIDERS = ['gmail.com', 'yahoo.com', 'noon.com', 'hotmail.com', 'outlook.com', 'icloud.com']
+// The first three are the chips shown under an empty domain: the most used providers.
+const PROVIDERS = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'noon.com']
 
 function split(email: string): { local: string; domain: string } | null {
   const at = email.indexOf('@')

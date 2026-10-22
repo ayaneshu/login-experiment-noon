@@ -16,6 +16,7 @@ import type { IconName } from '../ui/Icon'
 import { Pressable } from '../ui/Pressable'
 import { AuthFooter } from './IdentifyStep'
 import { MiddleTruncated, ReportingButton, Reveal } from './PasskeyFoundSheet'
+import { SavedAccountChoices } from './SavedAccountChoices'
 import { AuthTitle } from './shared'
 
 /** SwiftUI `.spring(duration:bounce:)`, exactly: stiffness (2π/d)², damping 4π(1−bounce)/d. */
@@ -79,7 +80,9 @@ export function ChooseAccountStep({ onOpen, onFoldHeight }: { onOpen: (url: stri
       <div ref={foldRef} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <AuthTitle title={t(lang, 'Choose your account', 'اختر حسابك')} bottomPadding={0} />
 
-        {remembered && (
+        {flow.isOct16 && remembered && <SavedAccountChoices remembered={remembered} />}
+
+        {!flow.isOct16 && remembered && (
           <AccountCard
             remembered={remembered}
             menuArea={menuArea}
@@ -98,17 +101,18 @@ export function ChooseAccountStep({ onOpen, onFoldHeight }: { onOpen: (url: stri
           />
         )}
 
-        <LabeledDivider label={t(lang, 'OR', 'أو')} dashed />
+        {!flow.isOct16 && <LabeledDivider label={t(lang, 'OR', 'أو')} dashed />}
 
         {/* Figma M-SecondaryButton (H52): the other way in. */}
-        <FieldButton
-          title={flow.isSeparate ? t(lang, 'Continue with different account', 'تابِع بحساب آخر') : t(lang, 'Sign in with another account', 'سجّل الدخول بحساب آخر')}
+        {!flow.isOct16 && <FieldButton
+          title={flow.isSeparate ? t(lang, 'Login/Signup with another account', 'سجّل الدخول أو أنشئ حساباً آخر') : t(lang, 'Sign in with another account', 'سجّل الدخول بحساب آخر')}
           tone={tones.secondary}
           size="h52"
           trailingIcon="system-chevron-right"
           textStyle="a16SemiBold"
-          onClick={() => flow.useDifferentAccount()}
-        />
+          // Separate flow: the sheet turns into Welcome's "Log in" / "Create new account".
+          onClick={() => (flow.isSeparate ? flow.showAnotherAccount() : flow.useDifferentAccount())}
+        />}
       </div>
 
       <div style={{ paddingTop: 20 }}>
@@ -134,15 +138,21 @@ export function ChooseAccountStep({ onOpen, onFoldHeight }: { onOpen: (url: stri
                   "You'll need your email or number to sign in next time. Your noon account isn't affected.",
                   'ستحتاج إلى بريدك الإلكتروني أو رقمك لتسجيل الدخول في المرة القادمة. لن يتأثر حسابك في نون.',
                 )}
-                destructiveTitle={t(lang, 'Remove account', 'إزالة الحساب')}
+                actions={[
+                  {
+                    title: t(lang, 'Remove account', 'إزالة الحساب'),
+                    destructive: true,
+                    onClick: () => {
+                      pendingAction.current = () => flow.forgetRememberedAccount()
+                      setConfirmsRemoval(false)
+                    },
+                  },
+                ]}
                 cancelTitle={t(lang, 'Cancel', 'إلغاء')}
-                onDestructive={() => {
-                  pendingAction.current = () => flow.forgetRememberedAccount()
-                  setConfirmsRemoval(false)
-                }}
                 onCancel={() => setConfirmsRemoval(false)}
               />
             )}
+
           </AnimatePresence>,
           screenEl,
         )}
@@ -519,21 +529,20 @@ function poseKeyframes(size: number, wave: number) {
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Arabic", system-ui, sans-serif'
 
-/** `.confirmationDialog` on iPhone: an action sheet over a light dim, the title and message above a
- *  destructive action, and Cancel on its own underneath. Tapping the dim cancels. */
+/** `.confirmationDialog` on iPhone: an action sheet over a light dim, the title (and message) above
+ *  the actions — red for a destructive one — and Cancel on its own underneath. Tapping the dim
+ *  cancels. */
 function ActionSheet({
   title,
   message,
-  destructiveTitle,
+  actions,
   cancelTitle,
-  onDestructive,
   onCancel,
 }: {
   title: string
-  message: string
-  destructiveTitle: string
+  message?: string
+  actions: { title: string; destructive?: boolean; onClick: () => void }[]
   cancelTitle: string
-  onDestructive: () => void
   onCancel: () => void
 }) {
   const reduceMotion = useReducedMotion() ?? false
@@ -560,7 +569,7 @@ function ActionSheet({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={`${id}-title`}
-        aria-describedby={`${id}-message`}
+        aria-describedby={message ? `${id}-message` : undefined}
         initial={{ y: '120%' }}
         animate={{ y: 0 }}
         exit={{ y: '120%', transition: leave }}
@@ -572,12 +581,18 @@ function ActionSheet({
             <div id={`${id}-title`} style={{ fontWeight: 600 }}>
               {title}
             </div>
-            <div id={`${id}-message`} style={{ fontWeight: 400 }}>
-              {message}
-            </div>
+            {message && (
+              <div id={`${id}-message`} style={{ fontWeight: 400 }}>
+                {message}
+              </div>
+            )}
           </div>
-          <div style={{ height: 0.5, background: 'rgba(60, 60, 67, 0.29)' }} />
-          <SheetAction title={destructiveTitle} color="#FF3B30" weight={400} onClick={onDestructive} />
+          {actions.map((action) => (
+            <div key={action.title}>
+              <div style={{ height: 0.5, background: 'rgba(60, 60, 67, 0.29)' }} />
+              <SheetAction title={action.title} color={action.destructive ? '#FF3B30' : colour.surface.actionBold} weight={400} onClick={action.onClick} />
+            </div>
+          ))}
         </div>
         <div style={{ borderRadius: 13, overflow: 'hidden', background: '#FFFFFF' }}>
           <SheetAction title={cancelTitle} color={colour.surface.actionBold} weight={600} onClick={onCancel} />

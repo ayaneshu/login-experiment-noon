@@ -1,15 +1,17 @@
+import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useFlow, useLang, useReportCenter } from '../app/context'
+import { useFlow, useLang, useReportCenter, useScreen } from '../app/context'
 import { softRise, spring } from '../design/motion'
 import { colour, type } from '../design/tokens'
 import { t } from '../model/lang'
 import { FieldButton, tones } from '../ui/Button'
 import type { HelperTone } from '../ui/Controls'
 import { HelperText, Shake } from '../ui/Controls'
+import { Art, ArtGlyph, Glyph, Icon } from '../ui/Icon'
 import { Pressable } from '../ui/Pressable'
 import { IdentifierField, Slide } from './IdentifierInput'
 import { ConsentLine, DomainChips, TypoFix } from './IdentifyStep'
-import { AuthTitle } from './shared'
+import { AuthTitle, Links } from './shared'
 
 export interface AccountFormStepProps {
   /** From the top padding to the button's bottom edge (the button sits 324pt below the sheet top). */
@@ -45,7 +47,11 @@ export function AccountFormStep({ stageHeight, errorShakes, focused, setFocused,
     flow.ctaAnchor = p
   })
 
-  const title = isSignup ? t(lang, 'Create account with email id', 'أنشئ حساباً بالبريد الإلكتروني') : t(lang, 'Log in to your account', 'سجّل الدخول إلى حسابك')
+  const title = isSignup
+    ? flow.isOct16
+      ? t(lang, 'Sign up with email', 'أنشئ حساباً بالبريد الإلكتروني')
+      : t(lang, 'Create account with email id', 'أنشئ حساباً بالبريد الإلكتروني')
+    : t(lang, 'Log in to your account', 'سجّل الدخول إلى حسابك')
   const subtitle = isSignup
     ? t(lang, 'It takes less than a minute.', 'لن يستغرق الأمر أكثر من دقيقة.')
     : flow.entryIsDirect
@@ -55,8 +61,13 @@ export function AccountFormStep({ stageHeight, errorShakes, focused, setFocused,
   const ctaTitle = isSignup
     ? flow.foundOnSignup != null
       ? t(lang, 'Continue to log in', 'تابِع لتسجيل الدخول')
-      : t(lang, 'Agree & get OTP', 'أوافق وأرسل الرمز')
-    : t(lang, 'Continue', 'متابعة')
+      : flow.signupNeedsConsentBox
+        ? // The checkbox does the agreeing (Saudi Arabia).
+          t(lang, 'Get OTP', 'أرسل الرمز')
+        : t(lang, 'Agree & get OTP', 'أوافق وأرسل الرمز')
+    : flow.phoneHasNoAccount
+      ? t(lang, 'Continue with email', 'تابِع بالبريد الإلكتروني')
+      : t(lang, 'Continue', 'متابعة')
 
   return (
     <div
@@ -96,26 +107,29 @@ export function AccountFormStep({ stageHeight, errorShakes, focused, setFocused,
       <AnimatePresence initial={false} mode="popLayout">
         {isSignup && flow.foundOnSignup == null && (
           <Slide key="consent" {...softRise} transition={spring.smooth} style={{ paddingBottom: 12 }}>
-            <Slide>
-              <ConsentLine onOpen={onOpen} />
-            </Slide>
+            <Slide>{flow.signupNeedsConsentBox ? <ConsentCheckbox onOpen={onOpen} /> : <ConsentLine onOpen={onOpen} />}</Slide>
           </Slide>
         )}
       </AnimatePresence>
 
-      <Slide>
-        <FieldButton
-          title={ctaTitle}
-          tone={tones.neutral}
-          isLoading={flow.isSending}
-          onClick={() => flow.submitIdentifier()}
-          buttonRef={ctaRef}
-          style={{ opacity: dimmed ? 0.4 : 1, pointerEvents: dimmed ? 'none' : undefined, transition: 'opacity 0.15s ease-out' /* Motion.tint */ }}
-        />
-        {dimmed && (
-          <span style={VISUALLY_HIDDEN}>{t(lang, 'Enter a valid email first', 'أدخل بريداً إلكترونياً صحيحاً أولاً')}</span>
+      {/* 16 Oct: when Log in finds nothing, Continue steps aside for the ways on under the error. */}
+      <AnimatePresence initial={false} mode="popLayout">
+        {!flow.loginFoundNothing && (
+          <Slide key="cta" {...softRise} transition={spring.smooth}>
+            <FieldButton
+              title={ctaTitle}
+              tone={tones.neutral}
+              isLoading={flow.isSending}
+              onClick={() => (flow.phoneHasNoAccount ? flow.continueWithEmail() : flow.submitIdentifier())}
+              buttonRef={ctaRef}
+              style={{ opacity: dimmed ? 0.4 : 1, pointerEvents: dimmed ? 'none' : undefined, transition: 'opacity 0.15s ease-out' /* Motion.tint */ }}
+            />
+            {dimmed && (
+              <span style={VISUALLY_HIDDEN}>{t(lang, 'Enter a valid email first', 'أدخل بريداً إلكترونياً صحيحاً أولاً')}</span>
+            )}
+          </Slide>
         )}
-      </Slide>
+      </AnimatePresence>
     </div>
   )
 }
@@ -140,11 +154,10 @@ function FormSupport({ focused }: { focused: boolean }) {
           ? t(lang, 'Enter your email address to continue', 'أدخل بريدك الإلكتروني للمتابعة')
           : t(lang, 'Enter your email or mobile number to continue', 'أدخل بريدك الإلكتروني أو رقم جوالك للمتابعة')
       case 'phone':
-        return t(
-          lang,
-          'Logging in with phone number is not available. Please use your email address to log in.',
-          'تسجيل الدخول برقم الهاتف غير متاح. يرجى استخدام بريدك الإلكتروني لتسجيل الدخول.',
-        )
+        // Only an unfinished number gets here; one with no account gets the calm note below.
+        return flow.isOct16
+          ? t(lang, 'Please enter a valid phone number', 'يرجى إدخال رقم هاتف صحيح')
+          : t(lang, 'Enter your full mobile number to continue', 'أدخل رقم جوالك كاملاً للمتابعة')
       case 'email':
         return t(lang, 'Enter a valid email, like name@example.com', 'أدخل بريداً إلكترونياً صحيحاً، مثل name@example.com')
     }
@@ -152,11 +165,17 @@ function FormSupport({ focused }: { focused: boolean }) {
 
   const helper: { text: string; tone: HelperTone } | null = flow.signupPhoneError
     ? { text: t(lang, 'You can only sign up with an email address', 'يمكنك إنشاء حساب بالبريد الإلكتروني فقط'), tone: 'error' }
-    : flow.showsInputError
+    : flow.loginFoundNothing
+      ? flow.phoneHasNoAccount
+        ? { text: t(lang, 'No account is linked with this phone number', 'لا يوجد حساب مرتبط بهذا الرقم'), tone: 'error' }
+        : { text: t(lang, 'No account exists with this email yet! Make sure the spelling is correct', 'لا يوجد حساب بهذا البريد الإلكتروني بعد! تأكّد من كتابته بشكل صحيح'), tone: 'error' }
+      : flow.showsInputError
       ? { text: inputError(), tone: 'error' }
       : flow.lookup.type === 'returning'
         ? { text: t(lang, 'Welcome back!', 'أهلاً بعودتك!'), tone: 'success' }
-        : null
+        : flow.phoneHasNoAccount
+          ? { text: t(lang, 'No account uses this number yet.', 'لا يوجد حساب بهذا الرقم بعد.'), tone: 'secondary' }
+          : null
   const typo = hint.type === 'typo' && !showsError ? hint.email : null
   const domains = hint.type === 'domains' && focused && !showsError ? hint.domains.slice(0, 3) : null
 
@@ -168,15 +187,9 @@ function FormSupport({ focused }: { focused: boolean }) {
             <HelperText text={helper.text} tone={helper.tone} />
           </Slide>
         )}
-        {flow.phoneHasNoAccount && (
-          <Slide key="email" {...softRise} transition={spring.smooth} style={{ paddingTop: 2, display: 'flex' }}>
-            <Pressable
-              scale={0.97}
-              onClick={() => flow.continueWithEmail()}
-              style={{ ...type.a16SemiBold, color: colour.text.action, padding: '0 8px', minHeight: 44, display: 'flex', alignItems: 'center', textAlign: 'start' }}
-            >
-              {t(lang, 'Continue with email', 'تابِع بالبريد الإلكتروني')}
-            </Pressable>
+        {flow.loginFoundNothing && (
+          <Slide key={flow.phoneHasNoAccount ? 'ways:phone' : 'ways:email'} {...softRise} transition={spring.smooth} style={{ paddingTop: 16 }}>
+            <WaysOn found={flow.phoneHasNoAccount ? 'noPhone' : 'noEmail'} />
           </Slide>
         )}
         {typo != null && (
@@ -191,5 +204,112 @@ function FormSupport({ focused }: { focused: boolean }) {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+// MARK: - 16 Oct
+
+/** Log in found nothing (Figma 1555:221030): the ways on, stacked under the error. A number offers
+ *  an email log in or a sign up; an email offers the sign up, carrying it over. `found` is a prop so
+ *  the chips keep their words while they fade out. */
+function WaysOn({ found }: { found: 'noPhone' | 'noEmail' }) {
+  const flow = useFlow()
+  const lang = useLang()
+  const chips =
+    found === 'noPhone'
+      ? [
+          { key: 'email', icon: <ArtGlyph name={Art.email} size={18} color={colour.text.primary} />, title: t(lang, 'Login with email instead', 'سجّل الدخول بالبريد الإلكتروني بدلاً من ذلك'), onClick: () => flow.continueWithEmail() },
+          { key: 'signup', title: t(lang, 'Signup with email', 'أنشئ حساباً بالبريد الإلكتروني'), onClick: () => flow.signUpInstead() },
+        ]
+      : [{ key: 'signup', icon: <ArtGlyph name={Art.email} size={18} color={colour.text.primary} />, title: t(lang, 'Sign up instead', 'أنشئ حساباً بدلاً من ذلك'), onClick: () => flow.signUpInstead() }]
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
+      {chips.map((chip, i) => (
+        <WayOnChip key={chip.key} index={i} icon={chip.icon} title={chip.title} onClick={chip.onClick} />
+      ))}
+    </div>
+  )
+}
+
+/** M-NeutralRoundButton, H44: a pill on the secondary surface with a hairline border, and a
+ *  chevron (its Icon Right) saying it leads on. The chips rise in one after another, just after
+ *  the error line, so the eye lands on them. */
+function WayOnChip({ index, icon, title, onClick }: { index: number; icon?: ReactNode; title: string; onClick: () => void }) {
+  const { isStatic } = useScreen()
+  return (
+    <motion.div
+      initial={isStatic ? false : softRise.initial}
+      animate={softRise.animate}
+      transition={{ ...spring.smooth, delay: 0.12 + index * 0.1 }}
+    >
+      <Pressable
+        scale={0.96}
+        onClick={onClick}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          height: 44,
+          padding: '0 16px',
+          borderRadius: 999,
+          background: colour.surface.secondary,
+          boxShadow: `inset 0 0 0 1px ${colour.border.primary}`,
+          color: colour.text.primary,
+        }}
+      >
+        {icon}
+        <span style={{ ...type.a14SemiBold, whiteSpace: 'nowrap' }}>{title}</span>
+        <Icon name="system-chevron-right" size={16} color={colour.text.secondary} flipsRTL style={{ marginInlineStart: 2 }} />
+      </Pressable>
+    </motion.div>
+  )
+}
+
+/** Saudi Arabia's TnC (Figma 1555:211463): a checkbox the customer ticks before "Get OTP". The
+ *  whole line toggles it; tapping "Get OTP" unticked shakes it and outlines the box in red. */
+function ConsentCheckbox({ onOpen }: { onOpen: (url: string) => void }) {
+  const flow = useFlow()
+  const lang = useLang()
+  const checked = flow.consentChecked
+  const nudged = flow.consentNudges > 0 && !checked
+  const url = Links.privacyPolicy(lang)
+  return (
+    <Shake trigger={flow.consentNudges}>
+      <div
+        role="checkbox"
+        aria-checked={checked}
+        tabIndex={0}
+        onClick={() => flow.setConsentChecked(!checked)}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault()
+            flow.setConsentChecked(!checked)
+          }
+        }}
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '0 8px', cursor: 'pointer', textAlign: 'start' }}
+      >
+        <Glyph
+          src={checked ? '/art/icons/checkbox-on.svg' : '/art/icons/checkbox-off.svg'}
+          size={20}
+          color={checked ? colour.text.primary : nudged ? colour.text.error : colour.text.tertiary}
+          style={{ transition: 'background-color 0.15s ease-out' }}
+        />
+        <p style={{ ...type.b12Regular, color: colour.text.tertiary, margin: 0, flex: 1, minWidth: 0 }}>
+          {t(lang, 'I agree to the ', 'أوافق على ')}
+          <a
+            href={url}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onOpen(url)
+            }}
+            style={{ ...type.b12Medium, color: colour.text.action, textDecoration: 'none' }}
+          >
+            {t(lang, 'Privacy Policy', 'سياسة الخصوصية')}
+          </a>
+          {t(lang, ' & consent to receiving marketing communications.', ' وعلى تلقّي الرسائل التسويقية.')}
+        </p>
+      </div>
+    </Shake>
   )
 }

@@ -33,11 +33,15 @@ export interface Flow {
   title: string
   summary: string
   steps: Preset[]
-  /** Which approach the flow belongs to: the new separate Log in / Sign up, or the earlier ones. */
-  group?: 'separate' | 'earlier'
+  /** Which approach the flow belongs to: the 16 Oct revision, the first separate Log in / Sign up,
+   *  or the earlier ones. */
+  group?: FlowGroup
 }
 
-export const FLOW_GROUPS: Record<'separate' | 'earlier', { title: string }> = {
+export type FlowGroup = 'oct16' | 'separate' | 'earlier'
+
+export const FLOW_GROUPS: Record<FlowGroup, { title: string }> = {
+  oct16: { title: 'Variant - 16 Oct' },
   separate: { title: 'Log in | Sign up' },
   earlier: { title: 'Earlier approaches' },
 }
@@ -112,6 +116,117 @@ const celebrating = (account: Account, isNew: boolean) => (app: AppModel) => {
 }
 const passkeyPhone = AuthService.anmolPasskeyPhone
 
+
+// MARK: - Variant - 16 Oct (Figma 1555:209366)
+
+/** A step in Variant - 16 Oct. */
+const o16 = (p: Preset): Preset => ({ variant: 'oct16', ...p })
+const inSaudi = (then: (app: AppModel) => void) => (app: AppModel) => {
+  app.selectMarket(SAUDI)
+  then(app)
+}
+
+const OCT16_FLOWS: Flow[] = [
+  {
+    id: 'o-entry',
+    group: 'oct16',
+    number: 'V0',
+    title: 'Entry points',
+    summary: 'My Account opens Welcome; the co-brand card, country and language show only there. Checkout and the address link open Log in directly with ✕ and “New account”. A remembered device opens Choose your account.',
+    steps: [
+      o16({ id: 'o-welcome', title: 'Welcome', note: 'Log in, or Create new account.' }),
+      o16({ id: 'o-cart', title: 'Cart', note: 'Checkout asks a signed-out customer to log in.', tab: 'cart' }),
+      o16({ id: 'o-checkout', title: 'From checkout', note: '✕ returns to Checkout; “New account” for someone new.', tab: 'cart', entry: 'checkout', ui: { focus: 'identifier' }, keyboard: 'email' }),
+      o16({ id: 'o-checkout-rest', title: 'Keyboard put away', note: 'The form comes down to the bottom; tap the field to type again.', tab: 'cart', entry: 'checkout', ui: { keyboardDown: true } }),
+      o16({ id: 'o-checkout-new', title: 'New account from checkout', note: 'Sign up; Back returns to Log in. After success, back to Checkout.', tab: 'cart', entry: 'checkout', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('', 'email', { signupFromLogin: true }) }),
+      o16({ id: 'o-link-chat', title: 'Address link in WhatsApp', note: 'A friend shares a noon address link.', tab: 'home', setup: (app) => app.set({ showsAddressChat: true }) }),
+      o16({ id: 'o-link', title: 'From the link', note: 'Log in first, then the address is saved.', tab: 'home', entry: 'addressLink', ui: { focus: 'identifier' }, keyboard: 'email' }),
+      o16({ id: 'o-saved', title: 'Returning on this phone', note: 'Choose your account instead of Welcome.', scenario: 'rememberedFaceID' }),
+    ],
+  },
+  {
+    id: 'o-cached',
+    group: 'oct16',
+    number: 'V1',
+    title: 'Saved account',
+    summary: 'The saved account is one row: with a passkey it opens Face ID, without one it sends a code. Face ID failing twice, or cancelling, falls back to a code. Below it, “Log in with another account” and “Create new account”.',
+    steps: [
+      o16({ id: 'o-ca-faceid', title: 'Choose your account', note: 'Passkey cached: the row logs in with Face ID.', scenario: 'rememberedFaceID' }),
+      o16({
+        id: 'o-ca-prompt',
+        title: 'Face ID prompt',
+        note: 'The system sheet scans on its own.',
+        scenario: 'rememberedFaceID',
+        setup: (app) => {
+          app.flow.hydrate({ showsFaceIDPrompt: true, biometricState: 'scanning' })
+          app.biometrics.prompt = 'scanning'
+        },
+      }),
+      o16({ id: 'o-ca-email', title: 'Email cached, no passkey', note: 'The row sends a code.', scenario: 'rememberedCode' }),
+      o16({ id: 'o-ca-code', title: 'Code to the saved email', scenario: 'rememberedCode', ui: { focus: 'otp' }, keyboard: 'numpad', setup: verifying(emailAnmol.identifier, emailAnmol, { origin: 'remembered' }), resume: resumeCode }),
+      o16({ id: 'o-ca-other', title: 'Log in with another account', note: 'An empty Log in; Back returns to the saved account.', scenario: 'rememberedFaceID', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email') }),
+      o16({ id: 'o-ca-new', title: 'Create new account', note: 'An empty Sign up; Back returns to the saved account.', scenario: 'rememberedFaceID', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('', 'email') }),
+    ],
+  },
+  {
+    id: 'o-login',
+    group: 'oct16',
+    number: 'V2',
+    title: 'Log in · email',
+    summary: 'Log in takes email or phone and checks it on Continue. An account turns the header green. An email with no account turns the field red, and Continue gives way to “Sign up instead”, which carries the email over.',
+    steps: [
+      o16({ id: 'o-lg-empty', title: 'Log in', note: 'Just Back in the header.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email') }),
+      o16({ id: 'o-lg-typing', title: 'Typing email', note: 'Domain chips help finish the email.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('ajain@', 'email') }),
+      o16({ id: 'o-lg-checking', title: 'Checking', note: 'Loader in the field after Continue.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('ajain@noon.com', 'email', { lookup: { type: 'checking' } }) }),
+      o16({ id: 'o-lg-found', title: 'Account found', note: 'Green “Welcome back!”.', tone: 'success', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('ajain@gmail.com', 'email', { lookup: { type: 'returning', account: emailAnmol } }) }),
+      o16({ id: 'o-lg-code', title: 'Enter code', note: 'Password option: the account has one.', ui: { focus: 'otp' }, keyboard: 'numpad', setup: verifying(emailAnmol.identifier, emailAnmol, { origin: 'login', resendIn: 14 }), resume: resumeCode }),
+      o16({ id: 'o-lg-password', title: 'Enter password', note: 'Email is filled in; only the password is needed.', ui: { focus: 'password' }, keyboard: 'text', setup: verifying(emailAnmol.identifier, emailAnmol, { origin: 'login', step: 'password', password: 'secret', resendIn: 0 }) }),
+      o16({ id: 'o-lg-passkey', title: 'Passkey found', note: 'Face ID, or send a code instead.', tone: 'success', setup: onLogin('ajain@noon.com', 'email', { lookup: { type: 'returning', account: AuthService.anmolWork }, passkeyOffer: AuthService.anmolWork }) }),
+      o16({ id: 'o-lg-noacct', title: 'No account', note: 'Red error; Continue gives way to “Sign up instead”.', tone: 'error', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('sara@yahoo.com', 'email', { emailHasNoAccount: true }) }),
+      o16({ id: 'o-lg-signup', title: 'Sign up instead', note: 'The email comes along; Back returns to Log in.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('sara@yahoo.com', 'email', { signupFromLogin: true, lookup: { type: 'new' } }) }),
+    ],
+  },
+  {
+    id: 'o-phone',
+    group: 'oct16',
+    number: 'V3',
+    title: 'Log in · phone',
+    summary: 'Typing digits turns the field into a phone field with the country chip. Codes go to WhatsApp first. A number with no account turns the field red, and Continue gives way to “Login with email instead” and “Signup with email”.',
+    steps: [
+      o16({ id: 'o-ph-typing', title: 'Phone', note: 'The field becomes a phone field with +971.', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('050', 'phone') }),
+      o16({ id: 'o-ph-invalid', title: 'Incomplete number', note: 'Continue says what’s wrong, in red.', tone: 'error', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('050 246', 'phone', { showsInputError: true }) }),
+      o16({ id: 'o-ph-found', title: 'Account found', note: 'Green “Welcome back!”.', tone: 'success', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('050 123 4567', 'phone', { lookup: { type: 'returning', account: phoneAnmol } }) }),
+      o16({ id: 'o-ph-code', title: 'Code on WhatsApp', note: 'SMS after the cooldown.', ui: { focus: 'otp' }, keyboard: 'numpad', setup: verifying(phoneAnmol.identifier, phoneAnmol, { origin: 'login' }), resume: resumeCode }),
+      o16({ id: 'o-ph-verified', title: 'Verified phone', note: 'Not the primary, but verified on ajain@gmail.com: it logs in.', tone: 'success', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('052 345 6789', 'phone', { lookup: { type: 'returning', account: emailAnmol } }) }),
+      o16({ id: 'o-ph-noacct', title: 'No account', note: 'Red error and two ways on, in place of Continue.', tone: 'error', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('055 987 6543', 'phone', { phoneHasNoAccount: true }) }),
+      o16({ id: 'o-ph-email', title: 'Login with email instead', note: 'Same Log in, the field empty for an email.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email') }),
+      o16({ id: 'o-ph-signup', title: 'Signup with email', note: 'An empty Sign up; Back returns to Log in.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('', 'email', { signupFromLogin: true }) }),
+      o16({ id: 'o-ph-country', title: 'Country code sheet', note: 'Pick a country; the number keeps focus.', ui: { countryPicker: true }, setup: onLogin('050', 'phone') }),
+      o16({ id: 'o-ph-passkey', title: 'Phone with a passkey', note: 'The sheet shows the number.', tone: 'success', setup: onLogin('050 246 6770', 'phone', { lookup: { type: 'returning', account: passkeyPhone }, passkeyOffer: passkeyPhone }) }),
+    ],
+  },
+  {
+    id: 'o-signup',
+    group: 'oct16',
+    number: 'V4',
+    title: 'Sign up',
+    summary: 'Sign up accepts email only, and “Agree & get OTP” is always active: a number or an unfinished email gets an error on tap. A new email turns the header yellow while the code is sent. In Saudi Arabia the TnC is a checkbox.',
+    steps: [
+      o16({ id: 'o-su-empty', title: 'Sign up', note: 'Email only.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('', 'email') }),
+      o16({ id: 'o-su-typing', title: 'Typing email', note: 'Domain chips; the button is always active.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('sara@', 'email') }),
+      o16({ id: 'o-su-checking', title: 'Checking', note: 'Someone new: yellow while the loader finishes.', tone: 'welcome', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('sara@gmail.com', 'email', { lookup: { type: 'checking' } }) }),
+      o16({ id: 'o-su-phone', title: 'Phone number', note: 'Red after “Agree & get OTP”; typing an email clears it.', tone: 'error', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('0501234567', 'phone', { showsInputError: true }) }),
+      o16({ id: 'o-su-found', title: 'Email has an account', note: 'TnC hides; “Continue to log in”.', tone: 'success', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('ajain@noon.com', 'email', { lookup: { type: 'returning', account: AuthService.anmolWork }, foundOnSignup: AuthService.anmolWork }) }),
+      o16({ id: 'o-su-code', title: 'Enter code', note: 'Or set a password instead.', ui: { focus: 'otp' }, keyboard: 'numpad', setup: verifying(sara.identifier, null, { origin: 'signup', resendIn: 22 }), resume: resumeCode }),
+      o16({ id: 'o-su-create', title: 'Create password', note: 'No confirm field, so password managers can save it.', ui: { focus: 'password' }, keyboard: 'text', setup: verifying(sara.identifier, null, { origin: 'signup', step: 'createPassword', newPassword: 'Noon@2026', resendIn: 0 }) }),
+      o16({ id: 'o-su-saudi', title: 'Saudi Arabia', note: 'The TnC is a checkbox; the button reads “Get OTP”.', ui: { focus: 'identifier' }, keyboard: 'email', setup: inSaudi(onSignup('sara@gmail.com', 'email')) }),
+      o16({ id: 'o-su-saudi-ready', title: 'Saudi · ready', note: 'Box ticked, then “Get OTP”.', ui: { focus: 'identifier' }, keyboard: 'email', setup: inSaudi(onSignup('sara@gmail.com', 'email', { consentChecked: true })) }),
+      o16({ id: 'o-su-success', title: 'Welcome to noon', note: 'The success animation plays.', setup: celebrating(sara, true) }),
+      o16({ id: 'o-su-passkey', title: 'Set up passkey', note: 'Shown once; a cooldown applies if dismissed.', setup: signedIn(sara, { sessionIsNew: true, showsFaceIDOffer: true }) }),
+    ],
+  },
+]
+
 const SEPARATE_FLOWS: Flow[] = [
   {
     id: 'n-entry',
@@ -134,7 +249,7 @@ const SEPARATE_FLOWS: Flow[] = [
     group: 'separate',
     number: 'N1',
     title: 'Saved account',
-    summary: 'With a passkey the main action is Face ID; without one it’s “Log in with OTP”. Face ID failing twice, or cancelling, falls back to a code.',
+    summary: 'With a passkey the main action is Face ID; without one it’s “Log in with OTP”. Face ID failing twice, or cancelling, falls back to a code. “Login/Signup with another account” turns the sheet into Welcome’s two choices.',
     steps: [
       sep({ id: 'n-ca-faceid', title: 'Choose your account', note: 'Passkey cached → Log in with Face ID.', scenario: 'rememberedFaceID' }),
       sep({
@@ -150,7 +265,9 @@ const SEPARATE_FLOWS: Flow[] = [
       sep({ id: 'n-ca-menu', title: 'Account menu', note: 'Log in with OTP, or remove the account.', scenario: 'rememberedFaceID', ui: { menuOpen: true } }),
       sep({ id: 'n-ca-email', title: 'Email cached, no passkey', note: 'One tap sends a code.', scenario: 'rememberedCode' }),
       sep({ id: 'n-ca-code', title: 'Code to the saved email', scenario: 'rememberedCode', ui: { focus: 'otp' }, keyboard: 'numpad', setup: verifying(emailAnmol.identifier, emailAnmol, { origin: 'remembered' }), resume: resumeCode }),
-      sep({ id: 'n-ca-other', title: 'Different account', note: 'Empty Log in.', scenario: 'rememberedFaceID', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email') }),
+      sep({ id: 'n-ca-another', title: 'Another account', note: 'The sheet becomes Welcome: Log in or Create new account; Back returns to the saved account.', scenario: 'rememberedFaceID', setup: (app) => app.flow.hydrate({ step: 'welcome', anotherAccount: true }) }),
+      sep({ id: 'n-ca-other', title: 'Log in picked', note: 'An empty Log in; Back returns to that Welcome.', scenario: 'rememberedFaceID', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email', { anotherAccount: true }) }),
+      sep({ id: 'n-ca-new', title: 'Create new account picked', note: 'An empty Sign up; Back returns to that Welcome.', scenario: 'rememberedFaceID', ui: { focus: 'identifier' }, keyboard: 'email', setup: onSignup('', 'email', { anotherAccount: true }) }),
     ],
   },
   {
@@ -175,12 +292,13 @@ const SEPARATE_FLOWS: Flow[] = [
     group: 'separate',
     number: 'N3',
     title: 'Log in · phone',
-    summary: 'Typing digits turns the field into a phone field with the country chip. Codes go to WhatsApp first. A number without an account gets an error on Continue, with a way to continue with email.',
+    summary: 'Typing digits turns the field into a phone field with the country chip. Codes go to WhatsApp first. A number verified on an email account logs in to that account. A number with no account gets a calm note and “Continue with email”, which clears the field for an email.',
     steps: [
       sep({ id: 'n-ph-typing', title: 'Phone', note: 'The field becomes a phone field with +971.', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('050 123 4567', 'phone') }),
       sep({ id: 'n-ph-code', title: 'Code on WhatsApp', note: 'SMS after the cooldown.', ui: { focus: 'otp' }, keyboard: 'numpad', setup: verifying(phoneAnmol.identifier, phoneAnmol, { origin: 'login' }), resume: resumeCode }),
-      sep({ id: 'n-ph-noacct', title: 'No account', note: 'Error + “Continue with email”.', tone: 'error', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('055 987 6543', 'phone', { showsInputError: true, phoneHasNoAccount: true }) }),
-      sep({ id: 'n-ph-email', title: 'Continue with email', note: 'Same screen, an empty email field.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email') }),
+      sep({ id: 'n-ph-verified', title: 'Verified phone', note: 'Not the primary, but verified on ajain@gmail.com: it logs in.', tone: 'success', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('052 345 6789', 'phone', { lookup: { type: 'returning', account: emailAnmol } }) }),
+      sep({ id: 'n-ph-noacct', title: 'No account', note: 'No red: a note, and the button becomes “Continue with email”.', ui: { focus: 'identifier' }, keyboard: 'numpad', setup: onLogin('055 987 6543', 'phone', { phoneHasNoAccount: true }) }),
+      sep({ id: 'n-ph-email', title: 'Continue with email', note: 'Stays on Log in with the field cleared; a new email then goes on to Sign up.', ui: { focus: 'identifier' }, keyboard: 'email', setup: onLogin('', 'email') }),
       sep({ id: 'n-ph-country', title: 'Country code sheet', note: 'Pick a country; the number keeps focus.', ui: { countryPicker: true }, setup: onLogin('050', 'phone') }),
       sep({ id: 'n-ph-passkey', title: 'Phone with a passkey', note: 'The sheet shows the number.', tone: 'success', setup: onLogin('050 246 6770', 'phone', { lookup: { type: 'returning', account: passkeyPhone }, passkeyOffer: passkeyPhone }) }),
     ],
@@ -350,7 +468,7 @@ const EARLIER_FLOWS: Flow[] = [
   },
 ]
 
-export const FLOWS: Flow[] = [...SEPARATE_FLOWS, ...EARLIER_FLOWS.map((f) => ({ ...f, group: 'earlier' as const }))]
+export const FLOWS: Flow[] = [...OCT16_FLOWS, ...SEPARATE_FLOWS, ...EARLIER_FLOWS.map((f) => ({ ...f, group: 'earlier' as const }))]
 
 export const ALL_PRESETS = FLOWS.flatMap((f) => f.steps.map((s) => ({ flow: f, preset: s })))
 export const findPreset = (id: string) => ALL_PRESETS.find((x) => x.preset.id === id)

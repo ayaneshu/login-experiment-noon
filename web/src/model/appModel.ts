@@ -2,6 +2,7 @@ import { AuthFlow } from './authFlow'
 import type { Country } from './country'
 import { INITIAL_COUNTRY } from './country'
 import type { LoginVariant } from './deviceStore'
+import { isSeparateFamily } from './deviceStore'
 import { DeviceStore } from './deviceStore'
 import type { Identifier } from './identifier'
 import type { Lang } from './lang'
@@ -101,15 +102,17 @@ export class AppModel extends Observable {
   }
 
   set loginVariant(variant: LoginVariant) {
-    const familyChanges = (this.store.loginVariant === 'separate') !== (variant === 'separate')
+    const current = this.store.loginVariant
+    const familyChanges = variant !== current && (isSeparateFamily(current) || isSeparateFamily(variant))
     this.store.update({ loginVariant: variant })
-    // The separate flow has its own screens (Welcome, Log in, Sign up): start it fresh.
+    // The separate flows have their own screens (Welcome, Log in, Sign up): start them fresh.
     if (familyChanges) this.restartAuth()
     else this.flow.setVariant(variant)
   }
 
   private makeFlow() {
     const flow = new AuthFlow(this.store, this.biometrics)
+    flow.market = this.market
     flow.onAuthenticated = (account, isNew, origin) => this.authenticated(account, isNew, origin)
     return flow
   }
@@ -310,6 +313,7 @@ export class AppModel extends Observable {
 
   selectMarket(country: Country) {
     this.market = country
+    this.flow.market = country
     if (this.flow.kind !== 'email') this.flow.selectCountry(country)
     this.changed()
   }

@@ -7,7 +7,7 @@ import { useObserve } from '../model/observable'
 import type { BiometricOutcome } from '../model/services'
 import { AuthService } from '../model/services'
 
-type Tag = 'Returning' | 'Passkey' | 'No password' | 'New'
+type Tag = 'Returning' | 'Passkey' | 'No password' | 'Verified phone' | 'New'
 const ACCOUNTS: { value: string; tag: Tag; id: Identifier }[] = [
   { value: 'ajain@gmail.com', tag: 'Returning', id: emailID('ajain@gmail.com') },
   { value: 'ajain@noon.com', tag: 'Passkey', id: emailID('ajain@noon.com') },
@@ -15,6 +15,8 @@ const ACCOUNTS: { value: string; tag: Tag; id: Identifier }[] = [
   { value: '+971 50 123 4567', tag: 'Returning', id: phoneID('AE', '501234567') },
   { value: '+971 50 246 6770', tag: 'Passkey', id: phoneID('AE', '502466770') },
   { value: '+966 55 123 4567', tag: 'No password', id: phoneID('SA', '551234567') },
+  // Not the account's primary: verified on ajain@gmail.com, so it logs in to that account.
+  { value: '+971 52 345 6789', tag: 'Verified phone', id: phoneID('AE', '523456789') },
   { value: '+971 55 987 6543', tag: 'New', id: phoneID('AE', '559876543') },
 ]
 

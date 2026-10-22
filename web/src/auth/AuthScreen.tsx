@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { animate, AnimatePresence, motion, useMotionValue, useMotionValueEvent, useTransform } from 'motion/react'
 import type { PanInfo } from 'motion/react'
 import { SAFE_BOTTOM, SAFE_TOP, SCREEN, useApp, useFlow, usePresetUI, useScreen } from '../app/context'
@@ -51,7 +52,10 @@ export function AuthScreen({
   const flow = useFlow()
   const lang = app.lang
   const preset = usePresetUI()
-  const { keyboard, keyboardHeight, isStatic } = useScreen()
+  const { keyboard, keyboardHeight, isStatic, screenRef } = useScreen()
+  // Sheets drawn over the whole phone (above the tab bar) live on the screen element itself.
+  const [screenEl, setScreenEl] = useState<HTMLElement | null>(null)
+  useEffect(() => setScreenEl(screenRef.current), [screenRef])
   const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
   const [identifierFocused, setIdentifierFocused] = useState(preset.focus === 'identifier')
@@ -315,7 +319,9 @@ export function AuthScreen({
         onApplyCreditCard={() => onOpen(Links.creditCard)}
         staticTone={staticTone}
         formChip={
-          flow.isAccountForm && !leaving
+          // 16 Oct keeps "New account" only where someone new may land on Log in (checkout, links);
+          // elsewhere the way across is contextual (Welcome, or the chips when Log in finds nothing).
+          flow.isAccountForm && !leaving && (!flow.isOct16 || (flow.step === 'login' && flow.entryIsDirect))
             ? flow.step === 'login'
               ? { title: t(lang, 'New account', 'حساب جديد'), showsPlus: true, onClick: () => flow.switchAccountForm() }
               : { title: t(lang, 'Log in', 'تسجيل الدخول'), showsPlus: false, onClick: () => flow.switchAccountForm() }
@@ -397,14 +403,19 @@ export function AuthScreen({
         </motion.div>
       )}
 
-      {/* "This account has a passkey": offered before a code is sent. */}
-      <AnimatePresence>
-        {flow.passkeyOffer && (
-          <motion.div key="passkey" initial={isStatic ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={spring.smooth} style={{ position: 'absolute', inset: 0, zIndex: 20 }}>
-            <PasskeyFoundSheet account={flow.passkeyOffer} />
-          </motion.div>
+      {/* "This account has a passkey": offered before a code is sent. Over the whole phone, so its dim
+          covers the tab bar that comes back when the keyboard goes (under the status bar). */}
+      {screenEl &&
+        createPortal(
+          <AnimatePresence>
+            {flow.passkeyOffer && (
+              <motion.div key="passkey" initial={isStatic ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={spring.smooth} style={{ position: 'absolute', inset: 0, zIndex: 40 }}>
+                <PasskeyFoundSheet account={flow.passkeyOffer} />
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          screenEl,
         )}
-      </AnimatePresence>
 
       {/* Separate flow: the system-style "Use Face ID to sign in?" sheet for a saved account. */}
       <AnimatePresence>

@@ -10,9 +10,14 @@ with the Noontree font and [Field Design System](https://github.com/ayaneshu/fie
 
 ## What's in it
 
-Three sign-in approaches, switchable in the prototype controls:
+Sign-in approaches, switchable in the prototype controls:
 
-- **Log in | Sign up** (the default) — Welcome with "Log in" and "Create new account"; Log in takes
+- **Variant - 16 Oct** (the web default) — the Log in | Sign up flow revised from the 16 Oct
+  handoff: when Log in finds no account the field turns red and Continue gives way to contextual
+  options ("Sign up instead", "Login with email instead", "Signup with email"); the header offers
+  "New account" only from checkout or a link; Choose your account is a tappable account row plus a
+  list; Sign up's button is always active, and Saudi Arabia ticks a TnC checkbox before "Get OTP".
+- **Log in | Sign up** — Welcome with "Log in" and "Create new account"; Log in takes
   email or phone, Sign up takes email only. Checkout and a WhatsApp address link open Log in directly.
 - **Smart field** — one field for phone or email that reshapes itself as you type
 - **Phone | Email tabs**

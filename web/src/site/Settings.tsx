@@ -7,7 +7,8 @@ import { useObserve } from '../model/observable'
 import { TransitionPreview } from './TransitionPreview'
 
 const APPROACHES: { value: LoginVariant; label: string; description: string }[] = [
-  { value: 'separate', label: 'Log in and Sign up', description: 'Separate screens from Welcome' },
+  { value: 'oct16', label: 'Variant - 16 Oct', description: 'Log in and Sign up, with contextual errors' },
+  { value: 'separate', label: 'Log in and Sign up', description: 'The first separate version' },
   { value: 'smart', label: 'Smart field', description: 'One field for phone or email' },
   { value: 'toggle', label: 'Phone | Email tabs', description: 'Tabs choose the field' },
 ]

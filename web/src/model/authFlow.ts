@@ -1,6 +1,7 @@
 import type { Country } from './country'
 import { INITIAL_COUNTRY, matchingDialPrefix, maxDigits } from './country'
 import type { DeviceStore, LoginVariant } from './deviceStore'
+import { isSeparateFamily } from './deviceStore'
 import type { Identifier, IdentifierKind, PhoneValidity } from './identifier'
 import { EmailAssist, InputParser, PhoneFormatter, idIsPhone, idKey, phoneCountry, phoneID } from './identifier'
 import type { Point } from './observable'
@@ -99,14 +100,28 @@ export class AuthFlow extends Observable {
   biometricState: BiometricState = 'idle'
 
   // Separate Log in / Sign up
-  /** Log in: the number typed has no account. Error under the field + "Continue with email". */
+  /** Log in: the number typed has no account (not even as a verified number). A calm note, and the
+   *  button becomes "Continue with email". 16 Oct: a red error, and Continue gives way to "Login
+   *  with email instead" and "Signup with email". */
   phoneHasNoAccount = false
+  /** 16 Oct, Log in: the email typed has no account. A red error, and Continue gives way to
+   *  "Sign up instead". */
+  emailHasNoAccount = false
+  /** The shopping market (the header's market pill). Saudi Arabia asks for the TnC as a checkbox. */
+  market: Country = INITIAL_COUNTRY
+  /** 16 Oct, Sign up in Saudi Arabia: the TnC checkbox. */
+  consentChecked = false
+  /** Bumped when "Get OTP" is tapped with the TnC box unticked: the line shakes. */
+  consentNudges = 0
   /** Sign up: the email typed already has an account. Green, TnC hides, "Continue to log in". */
   foundOnSignup: Account | null = null
   /** Checkout or a link opened Log in directly: ✕ closes instead of going back to Welcome. */
   entryIsDirect = false
   /** Sign up was reached from Log in (back returns there rather than to Welcome). */
   signupFromLogin = false
+  /** Welcome was reached from Choose your account ("Login/Signup with another account"): it gets
+   *  a Back to the saved account, and Log in / Sign up go back to it rather than past it. */
+  anotherAccount = false
   /** Saved account: the system-style Face ID sheet is up. */
   showsFaceIDPrompt = false
   /** Saved account: Face ID misses so far. Two misses (or a cancel) fall back to a code. */
@@ -132,7 +147,7 @@ export class AuthFlow extends Observable {
     super()
     this.variant = store.loginVariant
     this.remembered = store.remembered
-    this.step = store.remembered ? 'remembered' : store.loginVariant === 'separate' ? 'welcome' : 'identify'
+    this.step = store.remembered ? 'remembered' : isSeparateFamily(store.loginVariant) ? 'welcome' : 'identify'
   }
 
   /** Prototype only: jumps straight to a state (flow map presets). */
@@ -156,8 +171,9 @@ export class AuthFlow extends Observable {
   get canGoBack() {
     switch (this.step) {
       case 'remembered':
-      case 'welcome':
         return false
+      case 'welcome':
+        return this.anotherAccount
       case 'identify':
         return this.remembered != null
       case 'login':
@@ -171,8 +187,31 @@ export class AuthFlow extends Observable {
 
   // MARK: Separate Log in / Sign up
 
+  /** Separate Log in / Sign up screens: the first version and the 16 Oct revision. */
   get isSeparate() {
-    return this.variant === 'separate'
+    return isSeparateFamily(this.variant)
+  }
+
+  /** Variant - 16 Oct (Figma 1555:209366): the separate flow with contextual errors, a list-style
+   *  Choose your account, and the header's "New account" only for checkout and links. */
+  get isOct16() {
+    return this.variant === 'oct16'
+  }
+
+  /** 16 Oct, Log in: nothing was found for what was typed. The field turns red, Continue steps
+   *  aside, and the ways on show under the error instead. */
+  get loginFoundNothing() {
+    return this.isOct16 && this.step === 'login' && (this.phoneHasNoAccount || this.emailHasNoAccount)
+  }
+
+  /** The field outlined in red. */
+  get fieldShowsError() {
+    return this.showsInputError || this.signupPhoneError || this.loginFoundNothing
+  }
+
+  /** 16 Oct, Sign up in Saudi Arabia: the TnC is a checkbox, and the button reads "Get OTP". */
+  get signupNeedsConsentBox() {
+    return this.isOct16 && this.step === 'signup' && this.market.id === 'SA'
   }
 
   get isAccountForm() {
@@ -184,14 +223,16 @@ export class AuthFlow extends Observable {
     return this.entryIsDirect && (this.step === 'login' || (this.step === 'signup' && !this.signupFromLogin))
   }
 
-  /** Sign up takes email only: a number turns the field red and keeps the button disabled. */
+  /** Sign up takes email only: a number turns the field red and keeps the button disabled. 16 Oct
+   *  waits for "Agree & get OTP" before saying so. */
   get signupPhoneError() {
-    return this.step === 'signup' && this.kind === 'phone'
+    return this.step === 'signup' && this.kind === 'phone' && (!this.isOct16 || this.showsInputError)
   }
 
-  /** "Agree & get OTP" stays dimmed until the email is valid. */
+  /** "Agree & get OTP" stays dimmed until the email is valid. 16 Oct keeps it active and explains
+   *  what's missing on tap. */
   get canSubmitSignup() {
-    return this.foundOnSignup != null || (this.kind === 'email' && this.identifier != null)
+    return this.isOct16 || this.foundOnSignup != null || (this.kind === 'email' && this.identifier != null)
   }
 
   get phoneDigits() {
@@ -466,6 +507,7 @@ export class AuthFlow extends Observable {
       // The separate flow checks on Continue, not as you type.
       this.lookup = { type: 'idle' }
       this.phoneHasNoAccount = false
+      this.emailHasNoAccount = false
       this.foundOnSignup = null
       this.changed()
       return
@@ -519,6 +561,25 @@ export class AuthFlow extends Observable {
     this.faceIDFailures = 0
     this.resetFormState()
     this.go(this.isSeparate ? 'login' : 'identify', 'forward')
+  }
+
+  /** Choose your account → "Login/Signup with another account": the sheet becomes Welcome, with
+   *  "Log in" and "Create new account", and Back returns to the saved account. */
+  showAnotherAccount() {
+    this.lookupTask.cancel()
+    this.biometricState = 'idle'
+    this.faceIDFailures = 0
+    this.anotherAccount = true
+    this.resetFormState()
+    this.go('welcome', 'forward')
+  }
+
+  /** 16 Oct, Choose your account → "Create new account": an empty Sign up; Back returns to the
+   *  saved account. */
+  createAccountFromRemembered() {
+    this.biometricState = 'idle'
+    this.faceIDFailures = 0
+    this.openSignup()
   }
 
   forgetRememberedAccount() {
@@ -863,17 +924,22 @@ export class AuthFlow extends Observable {
   back() {
     switch (this.step) {
       case 'remembered':
+        return
       case 'welcome':
+        // Reached from Choose your account: back to the saved account.
+        if (!this.anotherAccount) return
+        this.anotherAccount = false
+        this.go('remembered', 'backward')
         return
       case 'login':
         if (this.entryIsDirect) return
         this.resetFormState()
-        this.go(this.remembered ? 'remembered' : 'welcome', 'backward')
+        this.go(this.remembered && !this.anotherAccount ? 'remembered' : 'welcome', 'backward')
         return
       case 'signup':
         if (this.entryIsDirect && !this.signupFromLogin) return
         this.resetFormState()
-        this.go(this.signupFromLogin ? 'login' : 'welcome', 'backward')
+        this.go(this.signupFromLogin ? 'login' : this.remembered && !this.anotherAccount ? 'remembered' : 'welcome', 'backward')
         return
       case 'identify':
         if (!this.remembered) return
@@ -928,11 +994,30 @@ export class AuthFlow extends Observable {
     this.go(next, next === 'signup' ? 'forward' : 'backward')
   }
 
-  /** Log in, number has no account: "Continue with email" empties the field for an email. */
+  /** Log in, number has no account: "Continue with email" stays on Log in with the field cleared,
+   *  so a mistyped number can be fixed and an email typed; a new email still goes on to Sign up.
+   *  16 Oct calls it "Login with email instead". */
   continueWithEmail() {
     this.replaceInput('')
-    this.phoneHasNoAccount = false
-    this.showsInputError = false
+    this.resetFormState()
+    this.changed()
+  }
+
+  /** 16 Oct, Log in found nothing: "Signup with email" (a number, so Sign up opens empty) or
+   *  "Sign up instead" (an email: it comes along, already known to be new, so "Agree & get OTP"
+   *  sends the code straight away). Back returns to Log in. */
+  signUpInstead() {
+    const knownNew = this.emailHasNoAccount && this.kind === 'email'
+    if (!knownNew) this.replaceInput('')
+    this.resetFormState()
+    if (knownNew) this.lookup = { type: 'new' }
+    this.signupFromLogin = true
+    this.go('signup', 'forward')
+  }
+
+  /** 16 Oct, Saudi Sign up: tick or untick the TnC. */
+  setConsentChecked(checked: boolean) {
+    this.consentChecked = checked
     this.changed()
   }
 
@@ -951,6 +1036,7 @@ export class AuthFlow extends Observable {
     this.lookup = { type: 'idle' }
     this.showsInputError = false
     this.phoneHasNoAccount = false
+    this.emailHasNoAccount = false
     this.foundOnSignup = null
   }
 
@@ -968,6 +1054,7 @@ export class AuthFlow extends Observable {
     if (this.lookup.type === 'checking') return
     this.lookup = { type: 'checking' }
     this.phoneHasNoAccount = false
+    this.emailHasNoAccount = false
     this.showsInputError = false
     this.changed()
     const registered = this.store.registered
@@ -989,13 +1076,20 @@ export class AuthFlow extends Observable {
         } else {
           this.startVerification(identifier, account, 'login')
         }
+      } else if (this.isOct16) {
+        // 16 Oct: say plainly that nothing was found and offer the ways on in place of Continue
+        // (log in with an email, or sign up). No header wash or shake: the eye should go to the
+        // chips, not to a red header.
+        this.lookup = { type: 'idle' }
+        if (identifier.type === 'phone') this.phoneHasNoAccount = true
+        else this.emailHasNoAccount = true
+        this.changed()
       } else if (identifier.type === 'phone') {
-        // Numbers can't start a new account: point them to email.
+        // Most likely someone new. Not an error, so no red: say so and offer the way on, since
+        // only an email can start an account.
         this.lookup = { type: 'idle' }
         this.phoneHasNoAccount = true
-        this.showsInputError = true
         this.changed()
-        this.emit('error', this.fieldAnchor)
       } else {
         // No account for this email: over to Sign up with it filled in. It stays known-new, so
         // "Agree & get OTP" sends the code without checking again.
@@ -1019,7 +1113,14 @@ export class AuthFlow extends Observable {
       return
     }
     if (this.lookup.type === 'checking' || this.isSending) return
-    if (this.lookup.type === 'new') {
+    if (this.signupNeedsConsentBox && !this.consentChecked) {
+      // Saudi Arabia: the TnC has to be ticked first. The line shakes to point at it.
+      this.consentNudges++
+      this.changed()
+      return
+    }
+    const knownNew = this.lookup.type === 'new'
+    if (knownNew && !this.isOct16) {
       // Log in already found no account for it.
       this.startVerification(identifier, null, 'signup')
       return
@@ -1030,7 +1131,8 @@ export class AuthFlow extends Observable {
     this.lookupTask.run(async (alive) => {
       await sleep(200)
       if (!alive()) return
-      const account = await AuthService.lookup(identifier, registered)
+      // Log in may already have found no account for it.
+      const account = knownNew ? null : await AuthService.lookup(identifier, registered)
       if (!alive() || this.step !== 'signup') return
       if (account) {
         // Already a customer: green "Welcome back!", the TnC goes, "Continue to log in".
@@ -1038,11 +1140,17 @@ export class AuthFlow extends Observable {
         this.foundOnSignup = account
         this.changed()
         this.emit('success', this.fieldAnchor)
-      } else {
-        this.lookup = { type: 'new' }
-        this.changed()
-        this.startVerification(identifier, null, 'signup')
+        return
       }
+      if (this.isOct16) {
+        // Someone new: the header turns yellow while the loader finishes (Figma "Checking").
+        this.emit('welcome', this.fieldAnchor)
+        await sleep(700)
+        if (!alive() || this.step !== 'signup') return
+      }
+      this.lookup = { type: 'new' }
+      this.changed()
+      this.startVerification(identifier, null, 'signup')
     })
   }
 
